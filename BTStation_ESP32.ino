@@ -3,8 +3,6 @@
 #include "FFat.h"
 #include <Wire.h>
 #include "ds3231.h"
-#include <SPI.h>
-#include <MFRC522.h>
 #include "BluetoothSerial.h"
 #include "command_definitions.h"
 #include "card_definitions.h"
@@ -14,6 +12,12 @@
 #include "preferences_definitions.h"
 #include <Preferences.h>
 
+#if defined(USE_PN532)
+#include "Adafruit_PN532.h"
+#else
+#include <SPI.h>
+#include <MFRC522.h>
+#endif
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
@@ -26,7 +30,11 @@ BluetoothSerial SerialBT;
 
 Preferences preferences;
 
+#if defined(USE_PN532)
+Adafruit_PN532 pn532(PN532_IRQ, PN532_RESET);
+#else
 MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN); // рфид-модуль
+#endif
 
 uint32_t rfidReadStartTime = 0;
 
@@ -65,8 +73,9 @@ uint32_t receiveStartTime = 0; // время начала получения п�
 uint16_t batteryLevel = 500; // текущий уровень напряжения (замер АЦП)
 uint8_t batteryAlarmCount = 0; // счетчик нарушений границы допустимого напряжения
 
-void SpiStart();
-void SpiEnd();
+void RfidStart();
+void RfidEnd();
+bool RfidFindChip();
 void processRfidCard();
 bool readUart(Stream& SerialPort);
 void executeCommand();
@@ -104,7 +113,7 @@ void errorBeep(uint8_t);
 void init_package(uint8_t);
 bool addData(uint8_t);
 void sendData();
-bool ntagWritePage(uint8_t*, uint8_t);
+bool ntagWritePage(uint8_t*, uint8_t, bool verify);
 bool ntagRead4pages(uint8_t);
 bool writeCheckPointToCard(uint8_t, uint32_t);
 int findNewPage();
@@ -270,7 +279,13 @@ void setup()
 	//читаем Bluetooth пин из памяти
 	btName = preferences.getString(EEPROM_STATION_PIN, String(""));
 	if (btName && btName.length() > 0)
+	{
+#ifdef DEBUG
+		Serial.println(F("Setting BT Pin: "));
+		Serial.println(btName);
+#endif
 		SerialBT.setPin(btName.c_str());
+	}
 	else
 	{
 #ifdef DEBUG
@@ -288,10 +303,10 @@ void setup()
 void loop()
 {
 	//если режим КП то отметить чип автоматом
-	if (stationMode != MODE_INIT && millis() - rfidReadStartTime > RFID_READ_PERIOD)
+	if (stationMode != MODE_INIT && millis() >= rfidReadStartTime)
 	{
 		processRfidCard();
-		rfidReadStartTime = millis();
+		rfidReadStartTime = millis() + RFID_READ_PERIOD;
 	}
 
 	// check UART for data
@@ -348,20 +363,60 @@ void loop()
 	else batteryAlarmCount = 0;*/
 }
 
-void SpiStart()
+void RfidStart()
 {
+#if defined(USE_PN532)
+#else
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
 	SPI.begin();      // Init SPI bus
 	mfrc522.PCD_Init();    // Init MFRC522
 	mfrc522.PCD_SetAntennaGain(gainCoeff);
 	delay(1);
+#endif
 }
 
-void SpiEnd()
+void RfidEnd()
 {
+#if defined(USE_PN532)
+	pn532.powerDownMode();
+#else
 	mfrc522.PCD_AntennaOff();
 	SPI.end();
-	delay(1);
+#endif
+}
+
+bool RfidFindChip()
+{
+#if defined(USE_PN532)
+	uint8_t uid[8] = { 0 };	// Buffer to store the returned UID
+	uint8_t uidLength;		// Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+	return pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
+#else
+	// Look for new cards
+	if (!mfrc522.PICC_IsNewCardPresent())
+	{
+#ifdef DEBUG
+		Serial.println(F("!!!chip not found"));
+#endif
+		return false;
+	}
+#ifdef DEBUG
+	Serial.println(F("!!!chip found"));
+#endif
+
+	// Select one of the cards
+	if (!mfrc522.PICC_ReadCardSerial())
+	{
+#ifdef DEBUG
+		Serial.println(F("!!!fail to select chip"));
+#endif
+		return false;
+	}
+#ifdef DEBUG
+	Serial.println(F("!!!chip selected"));
+#endif
+	return true;
+#endif
 }
 
 // Обработка поднесенного чипа
@@ -372,43 +427,25 @@ void processRfidCard()
 	DS3231_get(&checkTime);
 
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
-	SpiStart();
+	RfidStart();
 #ifdef DEBUG
 	Serial.println(F("!!!search chip"));
 #endif
 
-	// Look for new cards
-	if (!mfrc522.PICC_IsNewCardPresent())
+	if (!RfidFindChip())
 	{
-		SpiEnd();
-#ifdef DEBUG
-		Serial.println(F("!!!chip not found"));
-#endif
+		RfidEnd();
 		lastTeamFlag = 0;
-		return;
-	}
 #ifdef DEBUG
-	Serial.println(F("!!!chip found"));
-#endif
-
-	// Select one of the cards
-	if (!mfrc522.PICC_ReadCardSerial())
-	{
-		SpiEnd();
-#ifdef DEBUG
-		Serial.println(F("!!!fail to select chip"));
+		Serial.println(F("!!!fail to find chip"));
 #endif
 		return;
 	}
-
-#ifdef DEBUG
-	Serial.println(F("!!!chip selected"));
-#endif
 
 	// читаем блок информации
 	if (!ntagRead4pages(PAGE_CHIP_SYS))
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!fail to read chip"));
 #endif
@@ -424,7 +461,7 @@ void processRfidCard()
 	//неправильный тип чипа
 	if (ntag_page[2] != chipType)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!incorrect hw chip type"));
 #endif
@@ -449,7 +486,7 @@ void processRfidCard()
 	// неправильный тип чипа
 	/*if (ntag_page[6] != NTAG_MARK)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!incorrect sw chip type"));
 #endif
@@ -461,7 +498,7 @@ void processRfidCard()
 	// чип от другой прошивки
 	if (ntag_page[7] != FW_VERSION)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!incorrect fw ver."));
 #endif
@@ -484,7 +521,7 @@ void processRfidCard()
 	initTime += ntag_page[11];
 	if ((checkTime.unixtime - initTime) > maxTimeInit)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!outdated chip"));
 #endif
@@ -501,7 +538,7 @@ void processRfidCard()
 	uint16_t teamNumber = (ntag_page[4] << 8) + ntag_page[5];
 	if (teamNumber < 1 || teamNumber > maxTeamNumber)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.print(F("!!!incorrect chip #: "));
 		Serial.println(String(teamNumber));
@@ -534,9 +571,9 @@ void processRfidCard()
 		{
 			digitalWrite(GREEN_LED_PIN, HIGH);
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[14], ntag_page[15] };
-			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK))
+			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, false))
 			{
-				SpiEnd();
+				RfidEnd();
 #ifdef DEBUG
 				Serial.print(F("!!!failed to write chip"));
 #endif
@@ -547,7 +584,7 @@ void processRfidCard()
 			}
 		}
 
-		SpiEnd();
+		RfidEnd();
 		clearNewMask();
 		lastTeamFlag = teamNumber;
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -562,7 +599,7 @@ void processRfidCard()
 	// Если это повторная отметка
 	if (teamNumber == lastTeamFlag)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.print(F("!!!same chip attached"));
 #endif
@@ -598,7 +635,7 @@ void processRfidCard()
 	// если известный чип и стартовый КП
 	if (already_checked && stationMode == MODE_START_KP)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!Can't read chip"));
 #endif
@@ -619,7 +656,7 @@ void processRfidCard()
 	// ошибка чтения чипа
 	if (newPage == 0)
 	{
-		SpiEnd();
+		RfidEnd();
 		//digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(1);
 		addLastError(PROCESS_READ_CHIP);
@@ -632,7 +669,7 @@ void processRfidCard()
 	// больше/меньше нормы... Наверное, переполнен???
 	if (newPage != -1 && (newPage < PAGE_DATA_START || newPage >= tagMaxPage))
 	{
-		SpiEnd();
+		RfidEnd();
 		//digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(4);
 		addLastError(PROCESS_FIND_FREE_PAGE);
@@ -661,7 +698,7 @@ void processRfidCard()
 	digitalWrite(GREEN_LED_PIN, HIGH);
 	if (!writeCheckPointToCard(newPage, checkTime.unixtime))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(1);
 		addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing chip
@@ -673,7 +710,7 @@ void processRfidCard()
 	// Пишем дамп чипа во флэш
 	if (!writeDumpToFlash(teamNumber, checkTime.unixtime, initTime, mask))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(2);
 		addLastError(PROCESS_SAVE_DUMP); //CARD PROCESSING: error saving dump
@@ -683,7 +720,7 @@ void processRfidCard()
 		return;
 	}
 
-	SpiEnd();
+	RfidEnd();
 	digitalWrite(GREEN_LED_PIN, LOW);
 	beep(1, 200);
 
@@ -1079,13 +1116,16 @@ void resetStation()
 	{
 		String teamFile;
 		teamFile.reserve(teamFilePrefix.length() + 5);
-		for (int teamNumber = 1; teamNumber <= maxTeamNumber; teamNumber++)
+		for (int teamNumber = 0; teamNumber <= maxTeamNumber; teamNumber++)
 		{
 			teamFile = teamFilePrefix + String(teamNumber);
-			if (!FFat.remove(teamFile.c_str()))
+			if (FFat.exists(teamFile.c_str()))
 			{
-				sendError(FLASH_WRITE_ERROR, REPLY_RESET_STATION);
-				return;
+				if (!FFat.remove(teamFile.c_str()))
+				{
+					sendError(FLASH_WRITE_ERROR, REPLY_RESET_STATION);
+					return;
+				}
 			}
 		}
 	}
@@ -1148,28 +1188,20 @@ void initChip()
 
 	digitalWrite(GREEN_LED_PIN, HIGH);
 
-	SpiStart();
+	RfidStart();
 	// Look for new cards
-	if (!mfrc522.PICC_IsNewCardPresent())
+	if (!RfidFindChip())
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(NO_CHIP, REPLY_INIT_CHIP);
-		return;
-	}
-	// Select one of the cards
-	if (!mfrc522.PICC_ReadCardSerial())
-	{
-		SpiEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
-		sendError(RFID_READ_ERROR, REPLY_INIT_CHIP);
 		return;
 	}
 
 	// читаем блок информации
 	if (!ntagRead4pages(PAGE_CHIP_SYS))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_READ_ERROR, REPLY_INIT_CHIP);
 		return;
@@ -1178,7 +1210,7 @@ void initChip()
 	// Фильтруем неправильный тип чипа
 	if (ntag_page[2] != chipType)
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(WRONG_CHIP_TYPE, REPLY_INIT_CHIP);
 		return;
@@ -1194,7 +1226,7 @@ void initChip()
 	initTime += ntag_page[11];
 	if ((systemTime.unixtime - initTime) < maxTimeInit)
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(LOW_INIT_TIME, REPLY_INIT_CHIP);
 		return;
@@ -1204,9 +1236,9 @@ void initChip()
 	uint8_t dataBlock[4] = { 0,0,0,0 };
 	for (uint8_t page = PAGE_CHIP_NUM; page < tagMaxPage; page++)
 	{
-		if (!ntagWritePage(dataBlock, page))
+		if (!ntagWritePage(dataBlock, page, false))
 		{
-			SpiEnd();
+			RfidEnd();
 			digitalWrite(GREEN_LED_PIN, LOW);
 			sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
 			return;
@@ -1222,9 +1254,9 @@ void initChip()
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 1];
 	dataBlock[2] = ntagMark;
 	dataBlock[3] = FW_VERSION;
-	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM))
+	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM, false))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
 		return;
@@ -1235,9 +1267,9 @@ void initChip()
 	dataBlock[1] = (systemTime.unixtime & 0x00FF0000) >> 16;
 	dataBlock[2] = (systemTime.unixtime & 0x0000FF00) >> 8;
 	dataBlock[3] = systemTime.unixtime & 0x000000FF;
-	if (!ntagWritePage(dataBlock, PAGE_INIT_TIME))
+	if (!ntagWritePage(dataBlock, PAGE_INIT_TIME, false))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
 		return;
@@ -1248,9 +1280,9 @@ void initChip()
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 3];
 	dataBlock[2] = 0;
 	dataBlock[3] = 0;
-	if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK))
+	if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, false))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
 		return;
@@ -1259,13 +1291,13 @@ void initChip()
 	// получаем UID чипа
 	if (!ntagRead4pages(PAGE_UID))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_READ_ERROR, REPLY_INIT_CHIP);
 		return;
 	}
 
-	SpiEnd();
+	RfidEnd();
 	digitalWrite(GREEN_LED_PIN, LOW);
 
 	init_package(REPLY_INIT_CHIP);
@@ -1349,21 +1381,13 @@ void getTeamRecord()
 void readCardPages()
 {
 	digitalWrite(GREEN_LED_PIN, HIGH);
-	SpiStart();
+	RfidStart();
 	// Look for new cards
-	if (!mfrc522.PICC_IsNewCardPresent())
+	if (!RfidFindChip())
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(NO_CHIP, REPLY_READ_CARD_PAGE);
-		return;
-	}
-	// Select one of the cards
-	if (!mfrc522.PICC_ReadCardSerial())
-	{
-		SpiEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
-		sendError(RFID_READ_ERROR, REPLY_READ_CARD_PAGE);
 		return;
 	}
 
@@ -1377,7 +1401,7 @@ void readCardPages()
 	// 9-12: данные из страницы чипа(4 байта)
 	if (!addData(OK))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		return;
 	}
@@ -1385,7 +1409,7 @@ void readCardPages()
 	// читаем UID
 	if (!ntagRead4pages(PAGE_UID))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_READ_ERROR, REPLY_READ_CARD_PAGE);
 		return;
@@ -1396,7 +1420,7 @@ void readCardPages()
 	{
 		if (!addData(ntag_page[i]))
 		{
-			SpiEnd();
+			RfidEnd();
 			digitalWrite(GREEN_LED_PIN, LOW);
 			return;
 		}
@@ -1405,7 +1429,7 @@ void readCardPages()
 	// начальная страница
 	if (!addData(pageFrom))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		return;
 	}
@@ -1414,7 +1438,7 @@ void readCardPages()
 	{
 		if (!ntagRead4pages(pageFrom))
 		{
-			SpiEnd();
+			RfidEnd();
 			digitalWrite(GREEN_LED_PIN, LOW);
 			sendError(RFID_READ_ERROR, REPLY_READ_CARD_PAGE);
 			return;
@@ -1427,7 +1451,7 @@ void readCardPages()
 			{
 				if (!addData(ntag_page[i * 4 + j]))
 				{
-					SpiEnd();
+					RfidEnd();
 					digitalWrite(GREEN_LED_PIN, LOW);
 					return;
 				}
@@ -1436,7 +1460,7 @@ void readCardPages()
 		}
 	}
 
-	SpiEnd();
+	RfidEnd();
 	digitalWrite(GREEN_LED_PIN, LOW);
 
 	sendData();
@@ -1464,34 +1488,20 @@ void updateTeamMask()
 		return;
 
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
-	SpiStart();
+	RfidStart();
 	// Look for new cards
-	if (!mfrc522.PICC_IsNewCardPresent())
+	if (!RfidFindChip())
 	{
-		SpiEnd();
+		RfidEnd();
 		lastTeamFlag = 0;
 		sendError(NO_CHIP, REPLY_UPDATE_TEAM_MASK);
-		return;
-	}
-#ifdef DEBUG
-	Serial.println(F("!!!chip found"));
-#endif
-
-	// Select one of the cards
-	if (!mfrc522.PICC_ReadCardSerial())
-	{
-		SpiEnd();
-		sendError(RFID_READ_ERROR, REPLY_UPDATE_TEAM_MASK);
-#ifdef DEBUG
-		Serial.println(F("!!!fail to select card"));
-#endif
 		return;
 	}
 
 	// читаем блок информации
 	if (!ntagRead4pages(PAGE_UID))
 	{
-		SpiEnd();
+		RfidEnd();
 		sendError(RFID_READ_ERROR, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1499,7 +1509,7 @@ void updateTeamMask()
 	//неправильный тип чипа
 	if (ntag_page[14] != chipType)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!incorrect chip"));
 #endif
@@ -1519,7 +1529,7 @@ void updateTeamMask()
 	// читаем блок информации
 	if (!ntagRead4pages(PAGE_CHIP_NUM))
 	{
-		SpiEnd();
+		RfidEnd();
 		sendError(RFID_READ_ERROR, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1527,7 +1537,7 @@ void updateTeamMask()
 	// неправильный тип чипа
 	/*if (ntag_page[2] != NTAG_MARK)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 			Serial.println(F("!!!incorrect chip"));
 #endif
@@ -1538,7 +1548,7 @@ void updateTeamMask()
 		// чип от другой прошивки
 	if (ntag_page[3] != FW_VERSION)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!incorrect fw"));
 #endif
@@ -1556,7 +1566,7 @@ void updateTeamMask()
 	timeInit += ntag_page[7];
 	if ((systemTime.unixtime - timeInit) > maxTimeInit)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.println(F("!!!outdated chip"));
 #endif
@@ -1569,7 +1579,7 @@ void updateTeamMask()
 	// Если номер чипа =0 или >maxTeamNumber
 	if (chipNum < 1 || chipNum > maxTeamNumber)
 	{
-		SpiEnd();
+		RfidEnd();
 #ifdef DEBUG
 		Serial.print(F("!!!incorrect chip #"));
 		Serial.println(String(chipNum));
@@ -1597,43 +1607,34 @@ void updateTeamMask()
 #endif
 			digitalWrite(GREEN_LED_PIN, HIGH);
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[10], ntag_page[11] };
-			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK))
+			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, false))
 			{
-				SpiEnd();
+				RfidEnd();
 				digitalWrite(GREEN_LED_PIN, LOW);
 				sendError(RFID_WRITE_ERROR, REPLY_UPDATE_TEAM_MASK);
 				return;
 			}
 		}
 
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		clearNewMask();
 	}
 
-	SpiEnd();
+	RfidEnd();
 }
 
 // пишем присланные с ББ 4 байта в указанную страницу
 void writeCardPage()
 {
 	digitalWrite(GREEN_LED_PIN, HIGH);
-	SpiStart();
+	RfidStart();
 	// Look for new cards
-	if (!mfrc522.PICC_IsNewCardPresent())
+	if (!RfidFindChip())
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(NO_CHIP, REPLY_WRITE_CARD_PAGE);
-		return;
-	}
-
-	// Select one of the cards
-	if (!mfrc522.PICC_ReadCardSerial())
-	{
-		SpiEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
-		sendError(RFID_READ_ERROR, REPLY_WRITE_CARD_PAGE);
 		return;
 	}
 
@@ -1644,7 +1645,7 @@ void writeCardPage()
 	// проверить UID
 	if (!ntagRead4pages(PAGE_UID))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_READ_ERROR, REPLY_WRITE_CARD_PAGE);
 		return;
@@ -1660,7 +1661,7 @@ void writeCardPage()
 	}
 	if (flag)
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(WRONG_UID, REPLY_WRITE_CARD_PAGE);
 		return;
@@ -1674,15 +1675,15 @@ void writeCardPage()
 		uartBuffer[DATA_START_BYTE + 11],
 		uartBuffer[DATA_START_BYTE + 12]
 	};
-	if (!ntagWritePage(dataBlock, uartBuffer[DATA_START_BYTE + 8]))
+	if (!ntagWritePage(dataBlock, uartBuffer[DATA_START_BYTE + 8], false))
 	{
-		SpiEnd();
+		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
 		sendError(RFID_WRITE_ERROR, REPLY_WRITE_CARD_PAGE);
 		return;
 	}
 
-	SpiEnd();
+	RfidEnd();
 	digitalWrite(GREEN_LED_PIN, LOW);
 	init_package(REPLY_WRITE_CARD_PAGE);
 
@@ -2293,61 +2294,73 @@ void sendData()
 }
 
 // запись страницы (4 байта) в чип
-bool ntagWritePage(uint8_t* dataBlock, uint8_t pageAdr)
+bool ntagWritePage(uint8_t* dataBlock, uint8_t pageAdr, bool verify)
 {
+#if !defined(USE_PN532)
 	const uint8_t sizePageNtag = 4;
-
+#endif
 	uint8_t n = 0;
-
-	MFRC522::StatusCode status = MFRC522::STATUS_ERROR;
-	while (status != MFRC522::STATUS_OK && n < 3)
+	bool status = false;
+	while (!status && n < 3)
 	{
-		status = MFRC522::StatusCode(mfrc522.MIFARE_Ultralight_Write(pageAdr, dataBlock, sizePageNtag));
+#if defined(USE_PN532)
+		status = pn532.ntag2xx_WritePage(pageAdr, dataBlock);
+#else
+		status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Ultralight_Write(pageAdr, dataBlock, sizePageNtag)));
+#endif
+
 		n++;
-		if (status != MFRC522::STATUS_OK)
+		if (!status)
 		{
-			SpiStart();
-			mfrc522.PICC_IsNewCardPresent();
-			mfrc522.PICC_ReadCardSerial();
+			RfidStart();
+			RfidFindChip();
 		}
 	}
 
-	if (status != MFRC522::STATUS_OK)
+	if (!status)
 	{
 #ifdef DEBUG
 		Serial.println(F("!!!chip write failed"));
 #endif
-
 		return false;
 	}
 
-	uint8_t buffer[18];
-	uint8_t size = sizeof(buffer);
-
-	n = 0;
-	status = MFRC522::STATUS_ERROR;
-	while (status != MFRC522::STATUS_OK && n < 3)
-	{
-		status = MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size));
-		n++;
-	}
-	if (status != MFRC522::STATUS_OK)
+	//if (verify)
 	{
 #ifdef DEBUG
-		Serial.println(F("!!!chip read failed"));
+		Serial.println(F("!!!chip write verification started"));
 #endif
+		n = 0;
+		uint8_t buffer[18];
+		status = false;
+		while (!status && n < 3)
+		{
+#if defined(USE_PN532)
+			status = pn532.ntag2xx_Read4Pages(pageAdr, buffer);
+#else
+			uint8_t size = sizeof(buffer);
+			status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size)));
+#endif
+			n++;
+		}
 
-		return false;
-	}
-
-	for (uint8_t i = 0; i < 4; i++)
-	{
-		if (buffer[i] != dataBlock[i])
+		if (!status)
 		{
 #ifdef DEBUG
-			Serial.println(F("!!!chip verify failed"));
+			Serial.println(F("!!!chip read failed"));
 #endif
 			return false;
+		}
+
+		for (uint8_t i = 0; i < 4; i++)
+		{
+			if (buffer[i] != dataBlock[i])
+			{
+#ifdef DEBUG
+				Serial.println(F("!!!chip verify failed"));
+#endif
+				return false;
+			}
 		}
 	}
 
@@ -2359,33 +2372,33 @@ bool ntagRead4pages(uint8_t pageAdr)
 {
 	uint8_t size = 18;
 	uint8_t buffer[size];
-
 	uint8_t n = 0;
-
-	MFRC522::StatusCode status = MFRC522::STATUS_ERROR;
-	while (status != MFRC522::STATUS_OK && n < 3)
+	bool status = false;
+	while (!status && n < 3)
 	{
 #ifdef DEBUG
 		Serial.println(F("!!!card reading"));
 #endif
-
-		status = mfrc522.MIFARE_Read(pageAdr, buffer, &size);
-		if (status != MFRC522::STATUS_OK)
+#if defined(USE_PN532)
+		status = pn532.ntag2xx_Read4Pages(pageAdr, buffer);
+#else
+		status = (MFRC522::STATUS_OK == mfrc522.MIFARE_Read(pageAdr, buffer, &size));
+#endif
+		if (!status)
 		{
 #ifdef DEBUG
 			Serial.println(F("!!!card read fail"));
 #endif
-			SpiStart();
-			mfrc522.PICC_IsNewCardPresent();
-			mfrc522.PICC_ReadCardSerial();
+			RfidStart();
+			RfidFindChip();
 #ifdef DEBUG
 			Serial.println(F("!!!chip re-initialized"));
 #endif
 		}
 		n++;
-	}
+		}
 
-	if (status != MFRC522::STATUS_OK)
+	if (!status)
 	{
 #ifdef DEBUG
 		Serial.println(F("!!!card read failed"));
@@ -2402,7 +2415,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 #endif
 
 	return true;
-}
+	}
 
 // пишет на чип время и станцию отметки
 bool writeCheckPointToCard(uint8_t newPage, uint32_t checkTime)
@@ -2413,7 +2426,7 @@ bool writeCheckPointToCard(uint8_t newPage, uint32_t checkTime)
 	dataBlock[2] = (checkTime & 0x0000FF00) >> 8;
 	dataBlock[3] = (checkTime & 0x000000FF);
 
-	if (!ntagWritePage(dataBlock, newPage))
+	if (!ntagWritePage(dataBlock, newPage, false))
 	{
 		return false;
 	}
@@ -2681,7 +2694,7 @@ uint16_t refreshChipCounter()
 		}
 
 		file.close();
-	}
+		}
 
 #ifdef DEBUG
 	Serial.println();
@@ -2689,7 +2702,7 @@ uint16_t refreshChipCounter()
 	Serial.println(String(chips));
 #endif
 	return chips;
-}
+	}
 
 // обработка ошибок. формирование пакета с сообщением о ошибке
 void sendError(uint8_t errorCode, uint8_t commandCode)
