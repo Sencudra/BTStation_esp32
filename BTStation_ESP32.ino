@@ -1,4 +1,5 @@
 //#define DEBUG
+//#define BENCHMARK
 #include "FS.h"
 #include "FFat.h"
 #include <Wire.h>
@@ -142,19 +143,54 @@ void setup()
 	digitalWrite(RED_LED_PIN, LOW);
 	digitalWrite(BUZZER_PIN, LOW);
 
-	if (!FFat.begin())
-		Serial.println("FFat mount failed");
-
 	Wire.begin();
 	DS3231_init(DS3231_INTCN);
 
+#if defined(USE_PN532)
+	if (!pn532.begin())
+	{
+#ifdef DEBUG
+		Serial.println(F("!!! PN532 failed"));
+#endif
+		errorBeepMs(4, 200);
+		addLastError(STARTUP_RFID);
+	}
+#else
+	SPI.begin();
+	byte s = mfrc522.PCD_ReadRegister(MFRC522::PCD_Register::VersionReg);
+	if (s == 0 || s == 0xff)
+	{
+#ifdef DEBUG
+		Serial.println(F("!!! MFRC522 failed"));
+#endif
+		errorBeepMs(4, 200);
+		addLastError(STARTUP_RFID);
+	}
+	SPI.end();
+#endif
+
+	if (!FFat.begin())
+	{
+#ifdef DEBUG
+		Serial.println(F("!!! FFat failed"));
+#endif
+		errorBeepMs(4, 200);
+		addLastError(PROCESS_SAVE_DUMP);
+	}
+
 	// read settings
 	if (!preferences.begin("BTStation", false))
+	{
+#ifdef DEBUG
 		Serial.println("Preferences mount failed");
+		errorBeepMs(4, 200);
+		addLastError(PROCESS_SAVE_DUMP);
+#endif
+	}
 
 	//читаем номер станции из eeprom
-	int c = preferences.getUInt(EEPROM_STATION_NUMBER, 0xff);
-	if (c == 0xff || c == -1)
+	uint32_t c = preferences.getUInt(EEPROM_STATION_NUMBER, 0xff);
+	if (c == 0xff)
 	{
 		stationNumber = 0;
 #ifdef DEBUG
@@ -197,7 +233,7 @@ void setup()
 
 	//читаем коэфф. усиления
 	c = preferences.getUInt(EEPROM_GAIN, 0xff);
-	if (c != 0xff && c != -1)
+	if (c != 0xff)
 		gainCoeff = c;
 	else
 	{
@@ -211,7 +247,7 @@ void setup()
 
 	//читаем тип чипа
 	c = preferences.getUInt(EEPROM_CHIP_TYPE, 0xff);
-	if (c != 0xff && c != -1)
+	if (c != 0xff)
 		selectChipType(c);
 	else
 	{
@@ -390,7 +426,19 @@ bool RfidFindChip()
 #if defined(USE_PN532)
 	uint8_t uid[8] = { 0 };	// Buffer to store the returned UID
 	uint8_t uidLength;		// Length of the UID (4 or 7 bytes depending on ISO14443A card type)
-	return pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
+	bool result = pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
+#ifdef DEBUG
+	if (result)
+	{
+		Serial.println(F("!!!chip found"));
+		Serial.print(F("UIDlength: "));
+		Serial.println(String(uidLength));
+	}
+	else
+		Serial.println(F("!!!chip not found"));
+#endif
+
+	return result;
 #else
 	// Look for new cards
 	if (!mfrc522.PICC_IsNewCardPresent())
@@ -422,7 +470,13 @@ bool RfidFindChip()
 // Обработка поднесенного чипа
 void processRfidCard()
 {
-	if (stationNumber == 0 || stationNumber == 0xff) return;
+	if (stationNumber == 0 || stationNumber == 0xff)
+		return;
+
+#ifdef BENCHMARK
+	const unsigned long startCheck = millis();
+#endif
+
 	struct ts checkTime;
 	DS3231_get(&checkTime);
 
@@ -732,6 +786,12 @@ void processRfidCard()
 #ifdef DEBUG
 	Serial.print(F("!!!New record #"));
 	Serial.println(String(teamNumber));
+#endif
+
+#ifdef BENCHMARK
+	const unsigned long result = millis() - startCheck;
+	Serial.print(F("check time="));
+	Serial.println(String(result));
 #endif
 
 	if (scanAutoreport)
@@ -1380,6 +1440,10 @@ void getTeamRecord()
 // читаем страницы с чипа
 void readCardPages()
 {
+#ifdef BENCHMARK
+	const unsigned long startCheck = millis();
+#endif
+
 	digitalWrite(GREEN_LED_PIN, HIGH);
 	RfidStart();
 	// Look for new cards
@@ -1462,6 +1526,12 @@ void readCardPages()
 
 	RfidEnd();
 	digitalWrite(GREEN_LED_PIN, LOW);
+
+#ifdef BENCHMARK
+	const unsigned long result = millis() - startCheck;
+	Serial.print(F("read time="));
+	Serial.println(String(result));
+#endif
 
 	sendData();
 }
@@ -2396,7 +2466,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 #endif
 		}
 		n++;
-		}
+	}
 
 	if (!status)
 	{
@@ -2415,7 +2485,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 #endif
 
 	return true;
-	}
+}
 
 // пишет на чип время и станцию отметки
 bool writeCheckPointToCard(uint8_t newPage, uint32_t checkTime)
@@ -2694,7 +2764,7 @@ uint16_t refreshChipCounter()
 		}
 
 		file.close();
-		}
+	}
 
 #ifdef DEBUG
 	Serial.println();
@@ -2702,7 +2772,7 @@ uint16_t refreshChipCounter()
 	Serial.println(String(chips));
 #endif
 	return chips;
-	}
+}
 
 // обработка ошибок. формирование пакета с сообщением о ошибке
 void sendError(uint8_t errorCode, uint8_t commandCode)

@@ -1,6 +1,6 @@
 #pragma once
 // версия прошивки, номер пишется в чипы
-#define FW_VERSION			110
+#define FW_VERSION			201
 
 #define UART_SPEED			115200
 
@@ -8,15 +8,18 @@
 #define GREEN_LED_PIN		17 // светодиод синий
 #define BUZZER_PIN			14 // пищалка
 
+//#define USE_PN532
+
+#if defined(USE_PN532)
+#define PN532_IRQ			33
+#define PN532_RESET			32
+#else
 #define RFID_RST_PIN		13 // рфид модуль reset
 #define RFID_SS_PIN			SS // рфид модуль chip_select
 //#define RFID_MOSI_PIN		MOSI // рфид модуль
 //#define RFID_MISO_PIN		MISO // рфид модуль
 //#define RFID_SCK_PIN		SCK // рфид модуль
-
-#define USE_PN532			1
-#define PN532_IRQ			32
-#define PN532_RESET			33
+#endif
 
 #define BATTERY_PIN			04 // замер напряжения батареи
 
