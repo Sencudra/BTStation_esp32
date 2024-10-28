@@ -74,6 +74,10 @@ uint32_t receiveStartTime = 0; // время начала получения п�
 uint16_t batteryLevel = 500; // текущий уровень напряжения (замер АЦП)
 uint8_t batteryAlarmCount = 0; // счетчик нарушений границы допустимого напряжения
 
+uint32_t nextClockCheck = 0;
+uint32_t lastSystemClock = 0;
+uint32_t lastExternalClock = 0;
+
 void RfidStart();
 void RfidEnd();
 bool RfidFindChip();
@@ -130,6 +134,12 @@ void addLastError(uint8_t);
 uint8_t crcCalc(uint8_t*, uint16_t, uint16_t);
 void floatToByte(uint8_t*, float);
 bool selectChipType(uint8_t);
+void checkBatteryLevel();
+void checkClockIsRunning();
+void init_buzzer_pin(uint8_t buzzerPin);
+void set_output(uint8_t pwmChannelNum, int outValue);
+void esp32Tone(uint8_t pwmChannelNum, uint32_t freq);
+void esp32NoTone(uint8_t pwmChannelNum);
 
 void setup()
 {
@@ -142,6 +152,8 @@ void setup()
 	digitalWrite(GREEN_LED_PIN, LOW);
 	digitalWrite(RED_LED_PIN, LOW);
 	digitalWrite(BUZZER_PIN, LOW);
+
+	init_buzzer_pin(BUZZER_PIN);
 
 	Wire.begin();
 	DS3231_init(DS3231_INTCN);
@@ -325,7 +337,7 @@ void setup()
 	else
 	{
 #ifdef DEBUG
-		Serial.println(F("!!! BT Pin"));
+		Serial.println(F("!!! no BT Pin"));
 #endif
 	}
 
@@ -384,19 +396,8 @@ void loop()
 		addLastError(UART_TIMEOUT);
 	}
 
-	/*batteryLevel = (batteryLevel + getBatteryLevel()) / 2;
-	if ((float)((float)batteryLevel * voltageCoeff) <= batteryLimit)
-	{
-		if (batteryAlarmCount > 100)
-		{
-			digitalWrite(RED_LED_PIN, HIGH);
-			//tone(BUZZER_PIN, 50, 50);
-			delay(50);
-			digitalWrite(RED_LED_PIN, LOW);
-		}
-		else batteryAlarmCount++;
-	}
-	else batteryAlarmCount = 0;*/
+	checkBatteryLevel();
+	checkClockIsRunning();
 }
 
 void RfidStart()
@@ -1766,7 +1767,6 @@ void writeCardPage()
 void readFlash()
 {
 	// 0-3: адрес начала чтения
-	// 4: размер блока
 	uint32_t startAddress = uartBuffer[DATA_START_BYTE];
 	startAddress <<= 8;
 	startAddress += uartBuffer[DATA_START_BYTE + 1];
@@ -1775,11 +1775,15 @@ void readFlash()
 	startAddress <<= 8;
 	startAddress += uartBuffer[DATA_START_BYTE + 3];
 
+	// 4-5: размер блока
 	uint32_t length = uint32_t(uint32_t(uint32_t(uartBuffer[DATA_START_BYTE + 4]) * uint32_t(256))
 		+ uint32_t(uartBuffer[DATA_START_BYTE + 5]));
 
 	if (length > uint32_t(uint32_t(MAX_PAKET_LENGTH) - 7 - uint32_t(DATA_LENGTH_READ_FLASH) - 1))
-		length = uint32_t(MAX_PAKET_LENGTH - 7 - DATA_LENGTH_READ_FLASH - 1);
+	{
+		sendError(FLASH_WRITE_ERROR, REPLY_WRITE_FLASH);
+		return;
+	}
 
 #ifdef DEBUG
 	Serial.print(F("!!!flash read="));
@@ -1791,9 +1795,11 @@ void readFlash()
 	init_package(REPLY_READ_FLASH);
 
 	// 0: код ошибки
-	// 0-3: адрес начала чтения
-	// 4-n: данные из флэша
-	if (!addData(OK)) return;
+	// 1-4: адрес начала чтения
+	// 5-n: данные из флэша
+	if (!addData(OK))
+		return;
+
 #ifdef DEBUG
 	Serial.print(F("!!!OK "));
 	Serial.println(String(uartBufferPosition));
@@ -1839,6 +1845,7 @@ void readFlash()
 		if (b < 0x10) Serial.print(F("0"));
 		Serial.println(String(b, HEX));*/
 #endif
+
 	}
 
 	file.close();
@@ -2256,55 +2263,48 @@ uint16_t getBatteryLevel()
 	return AverageValue;
 }
 
-// ToDo: переделать для ESP32
 // сигнал станции, длительность сигнала и задержки в мс и число повторений
 void beep(uint8_t n, uint16_t ms)
 {
-	for (uint8_t i = 0; i < n; i++)
+	for (; n > 0; n--)
 	{
 		digitalWrite(GREEN_LED_PIN, HIGH);
-		//tone(BUZZER_PIN, 4000, ms);
+		esp32Tone(BUZZER_PWM_CHANNEL, 4000);
 		delay(ms);
+		esp32NoTone(BUZZER_PWM_CHANNEL);
 		digitalWrite(GREEN_LED_PIN, LOW);
-		if (n - i != 0)
-		{
-			delay(ms);
-		}
+		if (n - 1 > 0)
+			delay(500);
 	}
 }
 
-// ToDo: переделать для ESP32
 // сигнал ошибки станции
 void errorBeepMs(uint8_t n, uint16_t ms)
 {
-	for (uint8_t i = 0; i < n; i++)
+	for (; n > 0; n--)
 	{
 		digitalWrite(RED_LED_PIN, HIGH);
-		//tone(BUZZER_PIN, 500, ms);
+		esp32Tone(BUZZER_PWM_CHANNEL, 500);
 		delay(ms);
+		esp32NoTone(BUZZER_PWM_CHANNEL);
 		digitalWrite(RED_LED_PIN, LOW);
-		if (n - i > 0)
-		{
-			delay(ms);
-		}
+		if (n - 1 > 0)
+			delay(500);
 	}
 }
 
-// ToDo: переделать для ESP32
 // сигнал ошибки станции
 void errorBeep(uint8_t n)
 {
-	uint16_t ms = 200;
-	for (uint8_t i = 0; i < n; i++)
+	for (; n > 0; n--)
 	{
 		digitalWrite(RED_LED_PIN, HIGH);
-		//tone(BUZZER_PIN, 500, ms);
-		delay(ms);
+		esp32Tone(BUZZER_PWM_CHANNEL, 500);
+		delay(500);
+		esp32NoTone(BUZZER_PWM_CHANNEL);
 		digitalWrite(RED_LED_PIN, LOW);
-		if (n - i > 0)
-		{
-			delay(ms);
-		}
+		if (n - 1 > 0)
+			delay(500);
 	}
 }
 
@@ -2520,20 +2520,21 @@ int findNewPage()
 		}
 		for (uint8_t n = 0; n < 4; n++)
 		{
+			// chip was checked by another station with the same number
 			if (stationMode == MODE_START_KP && ntag_page[n * 4] == stationNumber)
 			{
 #ifdef DEBUG
 				Serial.println(F("!!!Chip checked already"));
 #endif
-				// chip was checked by another station with the same number
 				return -1;
 			}
+
+			// free page found
 			if (ntag_page[n * 4] == 0 ||
-				(stationMode == MODE_FINISH_KP && ntag_page[n * 4] == stationNumber))
-			{
-				// free page found
+				(stationMode == MODE_FINISH_KP
+					&& ntag_page[n * 4] == stationNumber))
 				return page;
-			}
+
 			page++;
 		}
 	}
@@ -2639,7 +2640,8 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 	// copy card content to flash. все страницы не начинающиеся с 0
 	uint8_t checkCount = 0;
 	uint8_t block = 0;
-	while (block < tagMaxPage)
+	bool endOrRecords = false;
+	while (block < tagMaxPage && !endOrRecords)
 	{
 #ifdef DEBUG
 		Serial.print(F("!!!reading 4 page from #"));
@@ -2679,6 +2681,7 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 				Serial.println(String(block + i));
 #endif
 				block = tagMaxPage;
+				endOrRecords = true;
 				break;
 			}
 		}
@@ -2871,4 +2874,77 @@ bool selectChipType(uint8_t type)
 	}
 	else return false;
 	return true;
+}
+
+void checkBatteryLevel()
+{
+	batteryLevel = (batteryLevel + getBatteryLevel()) / 2;
+	if ((float)((float)batteryLevel * voltageCoeff) <= batteryLimit)
+	{
+		if (batteryAlarmCount > 100)
+		{
+			addLastError(POWER_UNDERVOLTAGE);
+			digitalWrite(RED_LED_PIN, HIGH);
+			errorBeep(1);
+			delay(50);
+			digitalWrite(RED_LED_PIN, LOW);
+		}
+		else
+			batteryAlarmCount++;
+	}
+	else
+		batteryAlarmCount = 0;
+}
+
+void checkClockIsRunning()
+{
+	if (millis() > nextClockCheck)
+	{
+		uint32_t currentMillis = millis();
+		uint32_t diffSystemClock = (currentMillis - lastSystemClock) / 1000;
+
+		struct ts systemTime;
+		DS3231_get(&systemTime);
+		uint32_t diffExternalClock = systemTime.unixtime - lastExternalClock;
+
+		if (abs(long(diffSystemClock - diffExternalClock)) > 2)
+		{
+			addLastError(CLOCK_ERROR);
+			digitalWrite(RED_LED_PIN, HIGH);
+			errorBeep(1);
+			delay(50);
+			digitalWrite(RED_LED_PIN, LOW);
+		}
+
+		lastSystemClock = currentMillis;
+		lastExternalClock = systemTime.unixtime;
+		nextClockCheck = currentMillis + 10000;
+	}
+}
+
+void init_buzzer_pin(uint8_t buzzerPin)
+{
+	ledcSetup(BUZZER_PWM_CHANNEL + PWM_CHANNEL_OFFSET, PWM_CHANNEL_FREQ, PWM_RESOLUTION);
+	set_output(buzzerPin, 0);
+}
+
+void set_output(uint8_t pwmChannelNum, int outValue)
+{
+	if (outValue < 0)
+		outValue = 0;
+
+	if (outValue > MAX_DUTY_CYCLE)
+		outValue = MAX_DUTY_CYCLE;
+
+	ledcWrite(pwmChannelNum + PWM_CHANNEL_OFFSET, outValue);
+}
+
+void esp32Tone(uint8_t pwmChannelNum, uint32_t freq)
+{
+	ledcWriteTone(pwmChannelNum, freq);    // channel, frequency
+}
+
+void esp32NoTone(uint8_t pwmChannelNum)
+{
+	ledcWriteTone(pwmChannelNum, 0);
 }

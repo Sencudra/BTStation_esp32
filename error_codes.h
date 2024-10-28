@@ -1,5 +1,8 @@
 #pragma once
 // коды ошибок в списке последних ошибок
+#define CLOCK_ERROR				10 //STARTUP: clock chip failure
+#define POWER_UNDERVOLTAGE		11 //STARTUP: clock chip failure
+
 //коды ошибок STARTUP
 #define STARTUP_NUMBER          50 //STARTUP: incorrect station number in EEPROM
 #define STARTUP_MODE            51 //STARTUP: incorrect station mode in EEPROM
