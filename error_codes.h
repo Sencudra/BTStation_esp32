@@ -1,7 +1,7 @@
 #pragma once
 // коды ошибок в списке последних ошибок
 #define CLOCK_ERROR				10 //STARTUP: clock chip failure
-#define POWER_UNDERVOLTAGE		11 //STARTUP: clock chip failure
+#define POWER_UNDERVOLTAGE		11 //STARTUP: battery low
 
 //коды ошибок STARTUP
 #define STARTUP_NUMBER          50 //STARTUP: incorrect station number in EEPROM
@@ -13,7 +13,7 @@
 #define STARTUP_ERASE_SIZE      56 //STARTUP: incorrect erase block size in EEPROM
 #define STARTUP_BATTERY_LIMIT   57 //STARTUP: incorrect battery limit in EEPROM
 #define STARTUP_AUTOREPORT      58 //STARTUP: incorrect autoreport mode in EEPROM
-#define STARTUP_RFID			59 //STARTUP: incorrect autoreport mode in EEPROM
+#define STARTUP_RFID			59 //STARTUP: RFID initialization failed
 
 //коды ошибок UART
 #define UART_TIMEOUT            60 //UART: receive timeout
@@ -34,3 +34,5 @@
 #define PROCESS_FIND_FREE_PAGE  78 //CARD PROCESSING: error finding free page
 #define PROCESS_SAVE_DUMP       79 //CARD PROCESSING: error saving dump
 #define PROCESS_SEND_AUTOREPORT 80 //CARD PROCESSING: error sending autoreport
+
+#define STARTUP_AUTH			90 //STARTUP: incorrect auth mode in EEPROM

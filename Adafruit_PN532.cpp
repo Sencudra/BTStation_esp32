@@ -888,11 +888,11 @@ uint8_t Adafruit_PN532::mifareclassic_AuthenticateBlock(uint8_t* uid,
 
 #ifdef MIFAREDEBUG
 	PN532DEBUGPRINT.print(F("Trying to authenticate card "));
-	Adafruit_PN532::PrintHex(_uid, _uidLen);
+	Adafruit_PN532::PrintHex((const byte*)_uid, _uidLen);
 	PN532DEBUGPRINT.print(F("Using authentication KEY "));
 	PN532DEBUGPRINT.print(keyNumber ? 'B' : 'A');
 	PN532DEBUGPRINT.print(F(": "));
-	Adafruit_PN532::PrintHex(_key, 6);
+	Adafruit_PN532::PrintHex((const byte*)_key, 6);
 #endif
 
 	// Prepare the authentication command //
@@ -1306,6 +1306,61 @@ uint8_t Adafruit_PN532::mifareultralight_WritePage(uint8_t page,
 	@return  1 on success, 0 on error.
 */
 /**************************************************************************/
+uint8_t Adafruit_PN532::ntag2xx_Auth(uint8_t* pwd, uint8_t* pack)
+{
+#ifdef MIFAREDEBUG
+	PN532DEBUGPRINT.print(F("Trying to authenticate with 4 byte key"));
+	Adafruit_PN532::PrintHex(pwd, 4);
+#endif
+
+	/* Prepare the first command */
+	pn532_packetbuffer[0] = PN532_COMMAND_INCOMMUNICATETHRU;
+	pn532_packetbuffer[1] = NTAG_CMD_AUTH; /* NTAG Auth command = 0xB1 */
+	memcpy(pn532_packetbuffer + 2, pwd, 4); /* Data Payload */
+
+	/* Send the command */
+	if (!sendCommandCheckAck(pn532_packetbuffer, 6)) {
+#ifdef MIFAREDEBUG
+		PN532DEBUGPRINT.println(F("Failed to receive ACK for write command"));
+#endif
+
+		// Return Failed Signal
+		return 0;
+	}
+	delay(10);
+
+	/* Read the response packet */
+	readdata(pn532_packetbuffer, 26);
+
+#ifdef MIFAREDEBUG
+	PN532DEBUGPRINT.println(F("Received: "));
+	Adafruit_PN532::PrintHexChar(pn532_packetbuffer, 26);
+#endif
+
+	/* If byte 8 isn't 0x00 we probably have an error */
+	if (pn532_packetbuffer[7] == 0x00) {
+		/* Copy the 2 data bytes to the output buffer         */
+		/* Block content starts at byte 9 of a valid response */
+		memcpy(pack, pn532_packetbuffer + 8, 2);
+	}
+	else {
+#ifdef MIFAREDEBUG
+		PN532DEBUGPRINT.println(F("Unexpected response reading block: "));
+		Adafruit_PN532::PrintHex(pn532_packetbuffer, 26);
+#endif
+		return 0;
+	}
+
+	/* Display data for debug if requested */
+#ifdef MIFAREDEBUG
+	PN532DEBUGPRINT.print(F("Buffer: "));
+	Adafruit_PN532::PrintHex(pn532_packetbuffer, 26);
+#endif
+
+	// Return OK signal
+	return 1;
+}
+
 uint8_t Adafruit_PN532::ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
 	// TAG Type       PAGES   USER START    USER STOP
 	// --------       -----   ----------    ---------
@@ -1421,9 +1476,6 @@ uint8_t Adafruit_PN532::ntag2xx_Read4Pages(uint8_t page, uint8_t* buffer) {
 	if (pn532_packetbuffer[7] == 0x00) {
 		/* Copy the 4 data bytes to the output buffer         */
 		/* Block content starts at byte 9 of a valid response */
-		/* Note that the command actually reads 16 byte or 4  */
-		/* pages at a time ... we simply discard the last 12  */
-		/* bytes                                              */
 		memcpy(buffer, pn532_packetbuffer + 8, 16);
 	}
 	else {

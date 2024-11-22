@@ -1,15 +1,14 @@
 #pragma once
-// номер станции в eeprom памяти
-//#define EEPROM_STATION_NUMBER   00 // 1 byte
+// номер станции
 #define EEPROM_STATION_NUMBER   "ST#" // int
 
-// Bluetooth имя в eeprom памяти
+// Bluetooth имя
 #define EEPROM_STATION_NAME   "STNAME" // string
 
-// Bluetooth pin в eeprom памяти
+// Bluetooth pin
 #define EEPROM_STATION_PIN   "STPIN" // int
 
-// номер режима в eeprom памяти
+// номер режима работы станции
 #define EEPROM_STATION_MODE     "STMODE#" // int
 
 // коэфф. пересчета значения ADC в вольты = 0,00587
@@ -29,3 +28,12 @@
 
 // включить автоотчет о новых сканах
 #define EEPROM_AUTOREPORT       "AREPORT" // bool
+
+// включить авторизацию записи на карту
+#define EEPROM_AUTH             "AUTH" // bool
+
+// Ключ авторизации
+#define EEPROM_AUTH_PWD         "AUTHPWD" // byte[4]
+
+// Ключ авторизации
+#define EEPROM_AUTH_PACK        "AUTHPACK" // byte[2]

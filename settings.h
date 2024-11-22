@@ -14,7 +14,6 @@
 #define PWM_CHANNEL_OFFSET	0 // to avoid messing with 3rd party libraries PWM channel usage
 const int MAX_DUTY_CYCLE = (int)(pow(2, PWM_RESOLUTION) - 1);
 
-
 //#define USE_PN532
 
 #if defined(USE_PN532)
@@ -29,8 +28,10 @@ const int MAX_DUTY_CYCLE = (int)(pow(2, PWM_RESOLUTION) - 1);
 #endif
 
 #define BATTERY_PIN			04 // замер напряжения батареи
+#define BATTERY_ALARM_COUNT 100 // сколько подряд замеров ниже нормы приводят к срабатвыванию тревоги
 
 //#define RTC_ENABLE_PIN	5 // питание часов
+#define RTC_ALARM_DELAY     10000 // задержка между проверкой хода часов
 
 // тайм-аут приема команды с момента начала
 #define RECEIVE_TIMEOUT		1000

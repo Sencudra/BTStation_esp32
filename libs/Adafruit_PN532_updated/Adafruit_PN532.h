@@ -88,6 +88,7 @@
 #define MIFARE_CMD_INCREMENT (0xC1)        ///< Increment
 #define MIFARE_CMD_STORE (0xC2)            ///< Store
 #define MIFARE_ULTRALIGHT_CMD_WRITE (0xA2) ///< Write (MiFare Ultralight)
+#define NTAG_CMD_AUTH (0x1B)               ///< Authenticate
 
 // Prefixes for NDEF Records (to identify record type)
 #define NDEF_URIPREFIX_NONE (0x00)         ///< No prefix
@@ -192,6 +193,7 @@ public:
 	uint8_t mifareultralight_WritePage(uint8_t page, uint8_t* data);
 
 	// NTAG2xx functions
+	uint8_t ntag2xx_Auth(uint8_t* pwd, uint8_t* pack);
 	uint8_t ntag2xx_ReadPage(uint8_t page, uint8_t* buffer);
 	uint8_t ntag2xx_Read4Pages(uint8_t page, uint8_t* buffer);
 	uint8_t ntag2xx_WritePage(uint8_t page, uint8_t* data);

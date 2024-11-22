@@ -54,16 +54,18 @@ uint8_t stationNumber = 0; // номер станции по умолчанию
 uint8_t stationMode = MODE_INIT; // режим станции по умолчанию
 bool scanAutoreport = false; // автоматически отправлять данные сканирования в UART порт
 uint8_t chipType = NTAG215_ID; // тип чипа
-uint8_t ntagMark = NTAG215_MARK; // метка в страницу 3 чипа
 uint8_t tagMaxPage = NTAG215_MAX_PAGE; // размер чипа в страницах
 uint16_t teamFlashSize = 1024;
 int maxTeamNumber = 10; // максимальное кол-во записей в логе = (flashSize - flashBlockSize) / teamFlashSize - 1;
-const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL; // максимальный срок годности чипа [секунд] - дата инициализации одна неделя назад от текущего момента
+const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL; // максимальный срок годности чипа [секунд] - дата инициализации одна 7 дней назад от текущего момента. Максимум 194 дня
 float voltageCoeff = 0.00578; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/2.2кОм
 float batteryLimit = 0; // минимальное напряжение батареи
 uint8_t gainCoeff = 96; // коэфф. усиления антенны - работают только биты 4,5,6; значения [0, 16, 32, 48, 64, 80, 96, 112]
 String BTName = "";
 String BTPin = "";
+bool AuthEnabled = false; // авторизация RFID
+uint8_t AuthPwd[4] = { 0xff,0xff,0xff,0xff }; // ключ авторизации RFID
+uint8_t AuthPack[2] = { 0,0 }; // ответ авторизации RFID
 
 uint8_t uartBuffer[MAX_PAKET_LENGTH]; // UART command buffer
 uint16_t uartBufferPosition = 0;
@@ -73,6 +75,8 @@ uint32_t receiveStartTime = 0; // время начала получения п�
 
 uint16_t batteryLevel = 500; // текущий уровень напряжения (замер АЦП)
 uint8_t batteryAlarmCount = 0; // счетчик нарушений границы допустимого напряжения
+
+struct ts systemTime;
 
 uint32_t nextClockCheck = 0;
 uint32_t lastSystemClock = 0;
@@ -109,6 +113,10 @@ void setBatteryLimit();
 void scanTeams();
 void getLastErrors();
 void setAutoReport();
+void setAuth();
+void setAuthPwd();
+void setAuthPack();
+void unlockChip();
 void saveNewMask();
 void clearNewMask();
 uint16_t getBatteryLevel();
@@ -118,8 +126,11 @@ void errorBeep(uint8_t);
 void init_package(uint8_t);
 bool addData(uint8_t);
 void sendData();
-bool ntagWritePage(uint8_t*, uint8_t, bool verify);
+bool ntagAuth(uint8_t* pass, uint8_t* pack);
+bool ntagWritePage(uint8_t*, uint8_t, bool verify, bool forceNoAuth = false);
 bool ntagRead4pages(uint8_t);
+bool ntagSetPassword(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrite = false, uint8_t authlim = 0, uint8_t startPage = 0);
+bool ntagSetPasswordUnlock(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrite = false, uint8_t authlim = 0, uint8_t startPage = 0);
 bool writeCheckPointToCard(uint8_t, uint32_t);
 int findNewPage();
 bool checkTeamExists(uint16_t teamNumber);
@@ -341,10 +352,41 @@ void setup()
 #endif
 	}
 
+	//читаем режим авторизации из памяти
+	AuthEnabled = preferences.getBool(EEPROM_AUTH, false);
+
+	//читаем ключ авторизации RFID из памяти
+	c = preferences.getBytes(EEPROM_AUTH_PWD, AuthPwd, 4);
+	if (c != 4)
+	{
+		AuthEnabled = false;
+#ifdef DEBUG
+		Serial.println(F("!!! Auth PWD"));
+#endif
+	}
+
+	//читаем ответ авторизации RFID из памяти
+	c = preferences.getBytes(EEPROM_AUTH_PACK, AuthPack, 2);
+	if (c != 2)
+	{
+		AuthEnabled = false;
+#ifdef DEBUG
+		Serial.println(F("!!! Auth PACK"));
+#endif
+	}
+
 	const uint32_t flashSize = FFat.freeBytes();
 	maxTeamNumber = (flashSize / teamFlashSize) - 1;
 	totalChipsChecked = refreshChipCounter();
-	batteryLevel = analogRead(BATTERY_PIN);
+	batteryLevel = getBatteryLevel();
+
+	uint32_t currentMillis = millis();
+	DS3231_get(&systemTime);
+
+	lastSystemClock = currentMillis;
+	lastExternalClock = systemTime.unixtime;
+	nextClockCheck = currentMillis + 10000;
+
 	beep(1, 800);
 }
 
@@ -478,8 +520,7 @@ void processRfidCard()
 	const unsigned long startCheck = millis();
 #endif
 
-	struct ts checkTime;
-	DS3231_get(&checkTime);
+	DS3231_get(&systemTime);
 
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
 	RfidStart();
@@ -498,7 +539,7 @@ void processRfidCard()
 	}
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_CHIP_SYS))
+	if (!ntagRead4pages(PAGE_CHIP_SYS2))
 	{
 		RfidEnd();
 #ifdef DEBUG
@@ -574,7 +615,7 @@ void processRfidCard()
 	initTime += ntag_page[10];
 	initTime = initTime << 8;
 	initTime += ntag_page[11];
-	if ((checkTime.unixtime - initTime) > maxTimeInit)
+	if ((systemTime.unixtime - initTime) > maxTimeInit)
 	{
 		RfidEnd();
 #ifdef DEBUG
@@ -626,7 +667,7 @@ void processRfidCard()
 		{
 			digitalWrite(GREEN_LED_PIN, HIGH);
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[14], ntag_page[15] };
-			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, false))
+			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
 			{
 				RfidEnd();
 #ifdef DEBUG
@@ -751,7 +792,7 @@ void processRfidCard()
 #endif
 	// Пишем на чип отметку
 	digitalWrite(GREEN_LED_PIN, HIGH);
-	if (!writeCheckPointToCard(newPage, checkTime.unixtime))
+	if (!writeCheckPointToCard(newPage, systemTime.unixtime))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -763,7 +804,7 @@ void processRfidCard()
 		return;
 	}
 	// Пишем дамп чипа во флэш
-	if (!writeDumpToFlash(teamNumber, checkTime.unixtime, initTime, mask))
+	if (!writeDumpToFlash(teamNumber, systemTime.unixtime, initTime, mask))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -781,7 +822,7 @@ void processRfidCard()
 
 	// добавляем в буфер последних команд
 	addLastTeam(teamNumber, already_checked);
-	lastTimeChecked = checkTime.unixtime;
+	lastTimeChecked = systemTime.unixtime;
 	lastTeamFlag = teamNumber;
 
 #ifdef DEBUG
@@ -1060,6 +1101,22 @@ void executeCommand()
 		if (data_length == DATA_LENGTH_SET_AUTOREPORT) setAutoReport();
 		else errorLengthFlag = true;
 		break;
+	case COMMAND_SET_AUTH:
+		if (data_length == DATA_LENGTH_SET_AUTH) setAuth();
+		else errorLengthFlag = true;
+		break;
+	case COMMAND_SET_PWD:
+		if (data_length == DATA_LENGTH_SET_PWD) setAuthPwd();
+		else errorLengthFlag = true;
+		break;
+	case COMMAND_SET_PACK:
+		if (data_length == DATA_LENGTH_SET_PACK) setAuthPack();
+		else errorLengthFlag = true;
+		break;
+	case COMMAND_UNLOCK_CHIP:
+		if (data_length == DATA_LENGTH_UNLOCK_CHIP) unlockChip();
+		else errorLengthFlag = true;
+		break;
 
 	default:
 		sendError(WRONG_COMMAND, uartBuffer[COMMAND_BYTE] + 0x10);
@@ -1100,8 +1157,6 @@ void setTime()
 #endif
 
 	// 0-3: дата и время в unixtime
-
-	struct ts systemTime;
 
 	systemTime.year = uartBuffer[DATA_START_BYTE] + 2000;
 	systemTime.mon = uartBuffer[DATA_START_BYTE + 1];
@@ -1203,7 +1258,6 @@ void resetStation()
 // выдает статус: время на станции, номер станции, номер режима, число отметок, время последней страницы
 void getStatus()
 {
-	struct ts systemTime;
 	DS3231_get(&systemTime);
 
 	// 0: код ошибки
@@ -1244,7 +1298,6 @@ void getStatus()
 // инициализация чипа
 void initChip()
 {
-	struct ts systemTime;
 	DS3231_get(&systemTime);
 
 	digitalWrite(GREEN_LED_PIN, HIGH);
@@ -1260,7 +1313,7 @@ void initChip()
 	}
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_CHIP_SYS))
+	if (!ntagRead4pages(PAGE_CHIP_SYS2))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1293,11 +1346,22 @@ void initChip()
 		return;
 	}
 
+	if (AuthEnabled)
+	{
+		if (!ntagSetPassword(AuthPwd, AuthPack, true, false, 0, 0))
+		{
+			RfidEnd();
+			digitalWrite(GREEN_LED_PIN, LOW);
+			sendError(CHIP_SETPASS_ERROR, REPLY_INIT_CHIP);
+			return;
+		}
+	}
+
 	// заполняем чип 0x00
 	uint8_t dataBlock[4] = { 0,0,0,0 };
 	for (uint8_t page = PAGE_CHIP_NUM; page < tagMaxPage; page++)
 	{
-		if (!ntagWritePage(dataBlock, page, false))
+		if (!ntagWritePage(dataBlock, page, true, false))
 		{
 			RfidEnd();
 			digitalWrite(GREEN_LED_PIN, LOW);
@@ -1313,9 +1377,9 @@ void initChip()
 	// номер команды, тип чипа, версия прошивки станции
 	dataBlock[0] = uartBuffer[DATA_START_BYTE];
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 1];
-	dataBlock[2] = ntagMark;
+	dataBlock[2] = 0;//ntagMark;
 	dataBlock[3] = FW_VERSION;
-	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM, false))
+	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM, true, false))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1328,7 +1392,7 @@ void initChip()
 	dataBlock[1] = (systemTime.unixtime & 0x00FF0000) >> 16;
 	dataBlock[2] = (systemTime.unixtime & 0x0000FF00) >> 8;
 	dataBlock[3] = systemTime.unixtime & 0x000000FF;
-	if (!ntagWritePage(dataBlock, PAGE_INIT_TIME, false))
+	if (!ntagWritePage(dataBlock, PAGE_INIT_TIME, true, false))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1341,7 +1405,7 @@ void initChip()
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 3];
 	dataBlock[2] = 0;
 	dataBlock[3] = 0;
-	if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, false))
+	if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1350,7 +1414,7 @@ void initChip()
 	}
 
 	// получаем UID чипа
-	if (!ntagRead4pages(PAGE_UID))
+	if (!ntagRead4pages(PAGE_UID1))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1472,7 +1536,7 @@ void readCardPages()
 	}
 
 	// читаем UID
-	if (!ntagRead4pages(PAGE_UID))
+	if (!ntagRead4pages(PAGE_UID1))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1540,7 +1604,6 @@ void readCardPages()
 // Обновить маску команды в буфере
 void updateTeamMask()
 {
-	struct ts systemTime;
 	DS3231_get(&systemTime);
 
 	// 0-1: номер команды
@@ -1570,7 +1633,7 @@ void updateTeamMask()
 	}
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_UID))
+	if (!ntagRead4pages(PAGE_UID1))
 	{
 		RfidEnd();
 		sendError(RFID_READ_ERROR, REPLY_UPDATE_TEAM_MASK);
@@ -1678,7 +1741,7 @@ void updateTeamMask()
 #endif
 			digitalWrite(GREEN_LED_PIN, HIGH);
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[10], ntag_page[11] };
-			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, false))
+			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
 			{
 				RfidEnd();
 				digitalWrite(GREEN_LED_PIN, LOW);
@@ -1714,7 +1777,7 @@ void writeCardPage()
 	// 9-12: данные для записи (4 байта)
 
 	// проверить UID
-	if (!ntagRead4pages(PAGE_UID))
+	if (!ntagRead4pages(PAGE_UID1))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1746,7 +1809,7 @@ void writeCardPage()
 		uartBuffer[DATA_START_BYTE + 11],
 		uartBuffer[DATA_START_BYTE + 12]
 	};
-	if (!ntagWritePage(dataBlock, uartBuffer[DATA_START_BYTE + 8], false))
+	if (!ntagWritePage(dataBlock, uartBuffer[DATA_START_BYTE + 8], true, false))
 	{
 		RfidEnd();
 		digitalWrite(GREEN_LED_PIN, LOW);
@@ -1933,7 +1996,7 @@ void getConfig()
 	flag &= addData(OK);
 	flag &= addData(FW_VERSION);
 	flag &= addData(stationMode);
-	flag &= addData(ntagMark);
+	flag &= addData(chipType); //ntagMark
 
 	uint32_t n = FFat.totalBytes();
 	flag &= addData((n & 0xFF000000) >> 24);
@@ -2215,6 +2278,72 @@ void setAutoReport()
 	sendData();
 }
 
+// установка режима авторизации
+void setAuth()
+{
+	// 0: новый режим
+	AuthEnabled = uartBuffer[DATA_START_BYTE];
+	preferences.putBool(EEPROM_AUTH, AuthEnabled);
+	init_package(REPLY_SET_AUTH);
+
+	// 0: код ошибки
+	if (!addData(OK)) return;
+	sendData();
+}
+
+// установка режима авторизации
+void setAuthPwd()
+{
+	// 0: новый режим
+	AuthPwd[0] = uartBuffer[DATA_START_BYTE];
+	AuthPwd[1] = uartBuffer[DATA_START_BYTE + 1];
+	AuthPwd[2] = uartBuffer[DATA_START_BYTE + 2];
+	AuthPwd[3] = uartBuffer[DATA_START_BYTE + 3];
+	preferences.putBytes(EEPROM_AUTH_PWD, AuthPwd, 4);
+	init_package(REPLY_SET_PWD);
+
+	// 0: код ошибки
+	if (!addData(OK)) return;
+	sendData();
+}
+
+// установка режима авторизации
+void setAuthPack()
+{
+	// 0: новый режим
+	AuthPack[0] = uartBuffer[DATA_START_BYTE];
+	AuthPack[1] = uartBuffer[DATA_START_BYTE + 1];
+	preferences.putBytes(EEPROM_AUTH_PACK, AuthPack, 2);
+	init_package(REPLY_SET_PACK);
+
+	// 0: код ошибки
+	if (!addData(OK)) return;
+	sendData();
+}
+
+void unlockChip()
+{
+	init_package(REPLY_UNLOCK_CHIP);
+
+	uint8_t defaultPwd[4] = { 0xff,0xff,0xff,0xff }; // ключ авторизации RFID
+	uint8_t defaultPack[2] = { 0,0 }; // ответ авторизации RFID
+
+	// Пытаемся авторизоваться с текущим и стандартным ключами
+	if (!ntagAuth(AuthPwd, AuthPack))
+		ntagAuth(defaultPwd, defaultPack);
+
+	if (!ntagSetPasswordUnlock(defaultPwd, defaultPack, true, false, 0, 0xff))
+	{
+		sendError(CHIP_SETPASS_ERROR, REPLY_UNLOCK_CHIP);
+
+		return;
+	}
+
+	// 0: код ошибки
+	if (!addData(OK)) return;
+	sendData();
+}
+
 // Internal functions
 
 // заполнить буфер смены маски
@@ -2363,20 +2492,111 @@ void sendData()
 	uartBufferPosition = 0;
 }
 
+bool ntagAuth(uint8_t* pass, uint8_t* pack)
+{
+	uint8_t n = 0;
+	bool status = 0;
+	uint8_t p_Ack[2] = { 0,0 };
+	while (!status && n < 3)
+	{
+#ifdef DEBUG
+		Serial.print(F("PWD: "));
+		Serial.print(String(pass[0]));
+		Serial.print(F(" "));
+		Serial.print(String(pass[1]));
+		Serial.print(F(" "));
+		Serial.print(String(pass[2]));
+		Serial.print(F(" "));
+		Serial.println(String(pass[3]));
+		Serial.print(F("PACK: "));
+		Serial.print(String(pack[0]));
+		Serial.print(F(" "));
+		Serial.println(String(pack[1]));
+#endif
+
+#if defined(USE_PN532)
+		status = (1 == pn532.ntag2xx_Auth(pass, p_Ack));
+#else
+		status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.PCD_NTAG216_AUTH(pass, p_Ack)));
+#endif
+
+#ifdef DEBUG
+		Serial.print(F("Status: "));
+		Serial.println(String(status));
+		Serial.print(F("PACK: "));
+		Serial.print(String(p_Ack[0]));
+		Serial.print(F(" "));
+		Serial.println(String(p_Ack[1]));
+#endif
+		if (status && (pack[0] != p_Ack[0] || pack[1] != p_Ack[1]))
+			status = false;
+
+		n++;
+		if (!status)
+		{
+			RfidStart();
+			RfidFindChip();
+		}
+	}
+
+	if (!status)
+	{
+#ifdef DEBUG
+		Serial.println(F("!!!chip write failed"));
+#endif
+		return false;
+	}
+
+	return true;
+}
+
 // запись страницы (4 байта) в чип
-bool ntagWritePage(uint8_t* dataBlock, uint8_t pageAdr, bool verify)
+bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth)
 {
 #if !defined(USE_PN532)
 	const uint8_t sizePageNtag = 4;
 #endif
+
+	if (AuthEnabled && !forceNoAuth)
+	{
+#ifdef DEBUG
+		Serial.println(F("chip authentication"));
+#endif
+		if (!ntagAuth(AuthPwd, AuthPack))
+		{
+#ifdef DEBUG
+			Serial.println(F("!!!chip auth failed"));
+#endif
+			return false;
+		}
+	}
+
 	uint8_t n = 0;
 	bool status = false;
 	while (!status && n < 3)
 	{
+#ifdef DEBUG
+		Serial.print(F("Writing RFID page#"));
+		Serial.println(String(pageAdr));
+		Serial.print(F("Data: "));
+		Serial.print(String(data[0]));
+		Serial.print(F(" "));
+		Serial.print(String(data[1]));
+		Serial.print(F(" "));
+		Serial.print(String(data[2]));
+		Serial.print(F(" "));
+		Serial.println(String(data[3]));
+#endif
+
 #if defined(USE_PN532)
-		status = pn532.ntag2xx_WritePage(pageAdr, dataBlock);
+		status = pn532.ntag2xx_WritePage(pageAdr, data);
 #else
-		status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Ultralight_Write(pageAdr, dataBlock, sizePageNtag)));
+		status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Ultralight_Write(pageAdr, data, sizePageNtag)));
+#endif
+
+#ifdef DEBUG
+		Serial.print(F("Status: "));
+		Serial.println(String(status));
 #endif
 
 		n++;
@@ -2395,7 +2615,7 @@ bool ntagWritePage(uint8_t* dataBlock, uint8_t pageAdr, bool verify)
 		return false;
 	}
 
-	//if (verify)
+	if (verify)
 	{
 #ifdef DEBUG
 		Serial.println(F("!!!chip write verification started"));
@@ -2424,7 +2644,13 @@ bool ntagWritePage(uint8_t* dataBlock, uint8_t pageAdr, bool verify)
 
 		for (uint8_t i = 0; i < 4; i++)
 		{
-			if (buffer[i] != dataBlock[i])
+#ifdef DEBUG
+			Serial.print(String(buffer[i]));
+			Serial.print(F(" ?= "));
+			Serial.println(String(data[i]));
+#endif
+
+			if (buffer[i] != data[i])
 			{
 #ifdef DEBUG
 				Serial.println(F("!!!chip verify failed"));
@@ -2496,10 +2722,110 @@ bool writeCheckPointToCard(uint8_t newPage, uint32_t checkTime)
 	dataBlock[2] = (checkTime & 0x0000FF00) >> 8;
 	dataBlock[3] = (checkTime & 0x000000FF);
 
-	if (!ntagWritePage(dataBlock, newPage, false))
+	if (!ntagWritePage(dataBlock, newPage, true, false))
 	{
 		return false;
 	}
+	return true;
+}
+
+// desired password (default value is 0xFF FF FF FF)
+// desired password acknowledge (default value is 0x00 00)
+// try to authenticate first
+// false = PWD_AUTH for write only, true = PWD_AUTH for read and write
+// value between 0 and 7
+// first page to be protected, set to a value between 0 and 37 for NTAG212
+bool ntagSetPassword(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrite, uint8_t authlim, uint8_t startPage)
+{
+	if (!ntagRead4pages(0))
+		return false;
+
+	if (ntag_page[14] != chipType)
+		return false;
+
+	//Set PWD (page 133) to your desired password (default value is 0xFF FF FF FF).
+	if (!ntagWritePage(pass, tagMaxPage + PAGE_PWD, false, noAuth))
+		return false;
+
+	//Set PACK (page 140, bytes 0-1) to your desired password acknowledge (default value is 0x00 00).
+	uint8_t pwd[4] = { pack[0],pack[1],0,0 };
+	if (!ntagWritePage(pwd, tagMaxPage + PAGE_PACK, false, noAuth))
+		return false;
+
+	//Set AUTHLIM (page 132, byte 0, bits 2-0) to the maximum number of failed password verification attempts (setting this value to 0 will permit an unlimited number of PWD_AUTH attempts).
+	//Set PROT (page 132, byte 0, bit 7) to your desired value (0 = PWD_AUTH in needed only for write access, 1 = PWD_AUTH is necessary for read and write access).
+	if (!ntagRead4pages(tagMaxPage + PAGE_CFG1))
+		return false;
+
+	//var readAndWrite = false;  // false = PWD_AUTH for write only, true = PWD_AUTH for read and write
+	//int authlim = 0; // value between 0 and 7
+	// keep old value for bytes 1-3, you could also simply set them to 0 as they are currently RFU and must always be written as 0 (response[1], response[2], response[3] will contain 0 too as they contain the read RFU value)
+	uint8_t cfg1[4] = {
+		(byte)((ntag_page[0] & 0x78) | (readAndWrite ? 0x080 : 0x00) | (authlim & 0x07)),
+		ntag_page[1],
+		ntag_page[2],
+		ntag_page[3]
+	};
+
+	if (!ntagWritePage(cfg1, tagMaxPage + PAGE_CFG1, true, noAuth))
+		return false;
+
+	//Set AUTH0 (page 131, byte 3) to the first page that should require password authentication.
+	if (!ntagRead4pages(tagMaxPage + PAGE_CFG0))
+		return false;
+
+	// keep old value for byte 0,1,2
+	uint8_t cfg0[4] = { ntag_page[0], ntag_page[1], ntag_page[2], (byte)(startPage & 0x0ff) };
+	if (!ntagWritePage(cfg0, tagMaxPage + PAGE_CFG0, true, noAuth))
+		return false;
+
+	return true;
+}
+
+bool ntagSetPasswordUnlock(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrite, uint8_t authlim, uint8_t startPage)
+{
+	if (!ntagRead4pages(0))
+		return false;
+
+	if (ntag_page[14] != chipType)
+		return false;
+
+	//Set AUTH0 (page 131, byte 3) to the first page that should require password authentication.
+	if (!ntagRead4pages(tagMaxPage + PAGE_CFG0))
+		return false;
+
+	// keep old value for byte 0,1,2
+	uint8_t cfg0[4] = { ntag_page[0], ntag_page[1], ntag_page[2], (byte)(startPage & 0x0ff) };
+	if (!ntagWritePage(cfg0, tagMaxPage + PAGE_CFG0, true, noAuth))
+		return false;
+
+	//Set PWD (page 133) to your desired password (default value is 0xFF FF FF FF).
+	if (!ntagWritePage(pass, tagMaxPage + PAGE_PWD, false, noAuth))
+		return false;
+
+	//Set PACK (page 140, bytes 0-1) to your desired password acknowledge (default value is 0x00 00).
+	uint8_t pwd[4] = { pack[0],pack[1],0,0 };
+	if (!ntagWritePage(pwd, tagMaxPage + PAGE_PACK, false, noAuth))
+		return false;
+
+	//Set AUTHLIM (page 132, byte 0, bits 2-0) to the maximum number of failed password verification attempts (setting this value to 0 will permit an unlimited number of PWD_AUTH attempts).
+	//Set PROT (page 132, byte 0, bit 7) to your desired value (0 = PWD_AUTH in needed only for write access, 1 = PWD_AUTH is necessary for read and write access).
+	if (!ntagRead4pages(tagMaxPage + PAGE_CFG1))
+		return false;
+
+	//var readAndWrite = false;  // false = PWD_AUTH for write only, true = PWD_AUTH for read and write
+	//int authlim = 0; // value between 0 and 7
+	// keep old value for bytes 1-3, you could also simply set them to 0 as they are currently RFU and must always be written as 0 (response[1], response[2], response[3] will contain 0 too as they contain the read RFU value)
+	uint8_t cfg1[4] = {
+		(byte)((ntag_page[0] & 0x78) | (readAndWrite ? 0x080 : 0x00) | (authlim & 0x07)),
+		ntag_page[1],
+		ntag_page[2],
+		ntag_page[3]
+	};
+
+	if (!ntagWritePage(cfg1, tagMaxPage + PAGE_CFG1, true, noAuth))
+		return false;
+
 	return true;
 }
 
@@ -2703,7 +3029,6 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 	return true;
 }
 
-// сохраняем весь блок, стираем весь блок и возвращаем назад все, кроме переписываемой команды
 bool eraseTeamFromFlash(uint16_t teamNumber)
 {
 	const String teamFile = teamFilePrefix + String(teamNumber);
@@ -2857,19 +3182,19 @@ bool selectChipType(uint8_t type)
 	if (type == NTAG213_ID) //NTAG213
 	{
 		chipType = NTAG213_ID;
-		ntagMark = NTAG213_MARK;
+		//ntagMark = NTAG213_MARK;
 		tagMaxPage = NTAG213_MAX_PAGE;
 	}
 	else if (type == NTAG216_ID) //NTAG216
 	{
 		chipType = NTAG216_ID;
-		ntagMark = NTAG216_MARK;
+		//ntagMark = NTAG216_MARK;
 		tagMaxPage = NTAG216_MAX_PAGE;
 	}
 	else if (type == NTAG215_ID)//NTAG215
 	{
 		chipType = NTAG215_ID;
-		ntagMark = NTAG215_MARK;
+		//ntagMark = NTAG215_MARK;
 		tagMaxPage = NTAG215_MAX_PAGE;
 	}
 	else return false;
@@ -2881,7 +3206,7 @@ void checkBatteryLevel()
 	batteryLevel = (batteryLevel + getBatteryLevel()) / 2;
 	if ((float)((float)batteryLevel * voltageCoeff) <= batteryLimit)
 	{
-		if (batteryAlarmCount > 100)
+		if (batteryAlarmCount > BATTERY_ALARM_COUNT)
 		{
 			addLastError(POWER_UNDERVOLTAGE);
 			digitalWrite(RED_LED_PIN, HIGH);
@@ -2918,7 +3243,7 @@ void checkClockIsRunning()
 
 		lastSystemClock = currentMillis;
 		lastExternalClock = systemTime.unixtime;
-		nextClockCheck = currentMillis + 10000;
+		nextClockCheck = currentMillis + RTC_ALARM_DELAY;
 	}
 }
 

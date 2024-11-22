@@ -25,6 +25,11 @@
 #define COMMAND_SCAN_TEAMS               0x96
 #define COMMAND_GET_LAST_ERRORS          0x98
 #define COMMAND_SET_AUTOREPORT           0x99
+#define COMMAND_SET_AUTH                 0x9a
+#define COMMAND_SET_PWD                  0x9b
+#define COMMAND_SET_PACK                 0x9c
+#define COMMAND_UNLOCK_CHIP              0x9d
+//#define COMMAND_SET_MAX_INIT_DAYS        0x9e
 
 // размеры данных для команд
 #define DATA_LENGTH_SET_MODE             1
@@ -52,6 +57,11 @@
 #define DATA_LENGTH_SCAN_TEAMS           2
 #define DATA_LENGTH_GET_LAST_ERRORS      0
 #define DATA_LENGTH_SET_AUTOREPORT       1
+#define DATA_LENGTH_SET_AUTH             1
+#define DATA_LENGTH_SET_PWD              4
+#define DATA_LENGTH_SET_PACK             2
+#define DATA_LENGTH_UNLOCK_CHIP          0
+//#define DATA_LENGTH_SET_MAX_INIT_DAYS    1
 
 // ответы станции
 #define REPLY_SET_MODE                   0x90
@@ -79,6 +89,11 @@
 #define REPLY_SCAN_TEAMS                 0xa6
 #define REPLY_GET_LAST_ERRORS            0xa8
 #define REPLY_SET_AUTOREPORT             0xa9
+#define REPLY_SET_AUTH                   0xaa
+#define REPLY_SET_PWD                    0xab
+#define REPLY_SET_PACK                   0xac
+#define REPLY_UNLOCK_CHIP                0xad
+//#define REPLY_SET_MAX_INIT_DAYS          0xae
 
 // режимы станции
 #define MODE_INIT                        0
@@ -115,3 +130,5 @@
 #define EEPROM_WRITE_ERROR               22
 #define BT_ERROR                         23
 #define PARSE_PACKET_LENGTH_ERROR        24
+#define CHIP_AUTH_ERROR                  25
+#define CHIP_SETPASS_ERROR               26
