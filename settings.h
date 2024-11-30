@@ -7,7 +7,7 @@
 #define RED_LED_PIN			16 // светодиод ошибки (красный)
 #define GREEN_LED_PIN		17 // светодиод синий
 
-#define BUZZER_PIN			14 // пищалка
+#define BUZZER_PIN			25 // пищалка
 #define BUZZER_PWM_CHANNEL	1 // PWM channel#
 #define PWM_RESOLUTION		10 // 10 bits
 #define PWM_CHANNEL_FREQ	10000 // to avoid messing with 3rd party libraries PWM channel usage
