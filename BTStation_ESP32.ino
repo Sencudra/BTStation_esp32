@@ -28,13 +28,6 @@
 #include <MFRC522.h>
 #endif
 
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
-
-#if !defined(CONFIG_BT_SPP_ENABLED)
-#error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
-#endif
 BluetoothSerial SerialBT;
 
 Preferences preferences;
@@ -65,7 +58,8 @@ uint8_t chipType = NTAG215_ID; // тип чипа
 uint8_t tagMaxPage = NTAG215_MAX_PAGE; // размер чипа в страницах
 uint16_t teamFlashSize = 1024; // размер записи лога
 int maxTeamNumber = 1; // максимальное кол-во записей в флэш-памяти = (flashSize - flashBlockSize) / teamFlashSize - 1;
-const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL; // максимальный срок годности чипа [секунд] - дата инициализации одна 7 дней назад от текущего момента. Максимум 194 дня
+const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;	// максимальный срок годности чипа [секунд] - дата инициализации
+//7 дней назад от текущего момента. Максимум 194 дня
 float voltageCoeff = 0.00578; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/2.2кОм
 float batteryLimit = 3; // минимальное напряжение батареи
 uint8_t gainCoeff = 96; // коэфф. усиления антенны - работают только биты 4,5,6; значения [0, 16, 32, 48, 64, 80, 96, 112]
@@ -911,7 +905,9 @@ bool readUart(Stream& SerialPort)
 			Serial.println(String(uint8_t(c), HEX));
 #endif
 			// incorrect length
-			if (uartBufferPosition == DATA_LENGTH_LOW_BYTE && uint32_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE])) > uint16_t(uint16_t(MAX_PAKET_LENGTH) - uint16_t(DATA_START_BYTE)))
+			if (uartBufferPosition == DATA_LENGTH_LOW_BYTE
+				&& uint32_t(
+					uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE])) > uint16_t(uint16_t(MAX_PAKET_LENGTH) - uint16_t(DATA_START_BYTE)))
 			{
 #ifdef DEBUG
 				Serial.println(F("!!!incorrect length"));
@@ -935,7 +931,9 @@ bool readUart(Stream& SerialPort)
 				if (uartBuffer[uartBufferPosition] == crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1))
 				{
 					// incorrect station number
-					if (uartBuffer[STATION_NUMBER_BYTE] != stationNumber && uartBuffer[COMMAND_BYTE] != COMMAND_GET_STATUS && uartBuffer[COMMAND_BYTE] != COMMAND_GET_CONFIG)
+					if (uartBuffer[STATION_NUMBER_BYTE] != stationNumber
+						&& uartBuffer[COMMAND_BYTE] != COMMAND_GET_STATUS
+						&& uartBuffer[COMMAND_BYTE] != COMMAND_GET_CONFIG)
 					{
 #ifdef DEBUG
 						Serial.println(F("!!!incorrect station#"));
@@ -2004,7 +2002,7 @@ void getConfig()
 	// 3: тип чипов (емкость разная, а распознать их программно можно только по ошибкам чтения "дальних" страниц)
 	// 4-7: емкость флэш - памяти
 	// 8-11: размер сектора флэш - памяти
-	// 12-15: коэффициент пересчета напряжения(float, 4 bytes) - просто умножаешь коэффициент на полученное в статусе число и будет температура
+	// 12-15: коэффициент пересчета напряжения(float, 4 bytes) - умножить коэффициент на полученное в статусе число и будет температура
 	// 16: коэффициент усиления антенны RFID
 	// 17-18: размер блока хранения команды
 	init_package(REPLY_GET_CONFIG);
@@ -2766,14 +2764,17 @@ bool ntagSetPassword(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrit
 	if (!ntagWritePage(pwd, tagMaxPage + PAGE_PACK, false, noAuth))
 		return false;
 
-	//Set AUTHLIM (page 132, byte 0, bits 2-0) to the maximum number of failed password verification attempts (setting this value to 0 will permit an unlimited number of PWD_AUTH attempts).
-	//Set PROT (page 132, byte 0, bit 7) to your desired value (0 = PWD_AUTH in needed only for write access, 1 = PWD_AUTH is necessary for read and write access).
+	//Set AUTHLIM (page 132, byte 0, bits 2-0) to the maximum number of failed password verification attempts
+	//(setting this value to 0 will permit an unlimited number of PWD_AUTH attempts).
+	//Set PROT (page 132, byte 0, bit 7) to your desired value:
+	//(0 = PWD_AUTH in needed only for write access, 1 = PWD_AUTH is necessary for read and write access).
 	if (!ntagRead4pages(tagMaxPage + PAGE_CFG1))
 		return false;
 
 	//var readAndWrite = false;  // false = PWD_AUTH for write only, true = PWD_AUTH for read and write
 	//int authlim = 0; // value between 0 and 7
-	// keep old value for bytes 1-3, you could also simply set them to 0 as they are currently RFU and must always be written as 0 (response[1], response[2], response[3] will contain 0 too as they contain the read RFU value)
+	//keep old value for bytes 1-3, you could also simply set them to 0 as they are currently RFU and must always be written as 0
+	//(response[1], response[2], response[3] will contain 0 too as they contain the read RFU value)
 	uint8_t cfg1[4] = {
 		(byte)((ntag_page[0] & 0x78) | (readAndWrite ? 0x080 : 0x00) | (authlim & 0x07)),
 		ntag_page[1],
@@ -2824,14 +2825,17 @@ bool ntagRemovePassword(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndW
 	if (!ntagWritePage(pwd, tagMaxPage + PAGE_PACK, false, noAuth))
 		return false;
 
-	//Set AUTHLIM (page 132, byte 0, bits 2-0) to the maximum number of failed password verification attempts (setting this value to 0 will permit an unlimited number of PWD_AUTH attempts).
-	//Set PROT (page 132, byte 0, bit 7) to your desired value (0 = PWD_AUTH in needed only for write access, 1 = PWD_AUTH is necessary for read and write access).
+	//Set AUTHLIM (page 132, byte 0, bits 2-0) to the maximum number of failed password verification attempts
+	//(setting this value to 0 will permit an unlimited number of PWD_AUTH attempts).
+	//Set PROT (page 132, byte 0, bit 7) to your desired value
+	//(0 = PWD_AUTH in needed only for write access, 1 = PWD_AUTH is necessary for read and write access).
 	if (!ntagRead4pages(tagMaxPage + PAGE_CFG1))
 		return false;
 
 	//var readAndWrite = false;  // false = PWD_AUTH for write only, true = PWD_AUTH for read and write
 	//int authlim = 0; // value between 0 and 7
-	// keep old value for bytes 1-3, you could also simply set them to 0 as they are currently RFU and must always be written as 0 (response[1], response[2], response[3] will contain 0 too as they contain the read RFU value)
+	//keep old value for bytes 1-3, you could also simply set them to 0 as they are currently RFU and must always be written as 0
+	//(response[1], response[2], response[3] will contain 0 too as they contain the read RFU value)
 	uint8_t cfg1[4] = {
 		(byte)((ntag_page[0] & 0x78) | (readAndWrite ? 0x080 : 0x00) | (authlim & 0x07)),
 		ntag_page[1],
