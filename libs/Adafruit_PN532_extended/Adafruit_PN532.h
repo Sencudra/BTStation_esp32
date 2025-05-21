@@ -88,6 +88,8 @@
 #define MIFARE_CMD_INCREMENT (0xC1)        ///< Increment
 #define MIFARE_CMD_STORE (0xC2)            ///< Store
 #define MIFARE_ULTRALIGHT_CMD_WRITE (0xA2) ///< Write (MiFare Ultralight)
+
+// NTAG2xx Commands
 #define NTAG_CMD_AUTH (0x1B)               ///< Authenticate
 
 // Prefixes for NDEF Records (to identify record type)
@@ -162,8 +164,6 @@ public:
 	bool setPassiveActivationRetries(uint8_t maxRetries);
 
 	// ISO14443A functions
-	bool readPassiveTargetID(
-		uint8_t cardbaudrate, uint16_t timeout = 0); // timeout 0 means no timeout - will block forever.
 	bool readPassiveTargetID(
 		uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength,
 		uint16_t timeout = 0); // timeout 0 means no timeout - will block forever.

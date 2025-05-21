@@ -60,8 +60,8 @@ uint16_t teamFlashSize = 1024; // размер записи лога
 int maxTeamNumber = 1; // максимальное кол-во записей в флэш-памяти = (flashSize - flashBlockSize) / teamFlashSize - 1;
 const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;	// максимальный срок годности чипа [секунд] - дата инициализации
 //7 дней назад от текущего момента. Максимум 194 дня
-float voltageCoeff = 0.00578; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/2.2кОм
-float batteryLimit = 3; // минимальное напряжение батареи
+float voltageCoeff = 0.0011; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/4.7кОм
+float batteryLimit = 0; // минимальное напряжение батареи
 uint8_t gainCoeff = 96; // коэфф. усиления антенны - работают только биты 4,5,6; значения [0, 16, 32, 48, 64, 80, 96, 112]
 String BTName = "";
 String BTPin = "";
@@ -84,74 +84,6 @@ uint32_t nextClockCheck = 0;
 uint32_t lastSystemClock = 0;
 uint32_t lastExternalClock = 0;
 
-bool RfidStart();
-void RfidEnd();
-void processRfidCard();
-bool readUart(Stream& SerialPort);
-void executeCommand();
-void setMode();
-void setTime();
-void resetStation();
-void getStatus();
-void initChip();
-void getLastTeams();
-void getTeamRecord();
-void readCardPages();
-void updateTeamMask();
-void writeCardPage();
-void readFlash();
-void writeFlash();
-void eraseTeamFlash();
-void getConfig();
-void setVCoeff();
-void setGain();
-void setChipType();
-void setTeamFlashSize();
-void setFlashBlockSize();
-void setBtName();
-void setBtPinCode();
-void setBatteryLimit();
-void scanTeams();
-void getLastErrors();
-void setAutoReport();
-void setAuth();
-void setAuthPwd();
-void setAuthPack();
-void unlockChip();
-void saveNewMask();
-void clearNewMask();
-uint16_t getBatteryLevel();
-void beep(uint8_t, uint16_t);
-void errorBeepMs(uint8_t, uint16_t);
-void errorBeep(uint8_t);
-void init_package(uint8_t);
-bool addData(uint8_t);
-void sendData();
-bool ntagAuth(uint8_t* pass, uint8_t* pack);
-bool ntagWritePage(uint8_t*, uint8_t, bool verify, bool forceNoAuth = false);
-bool ntagRead4pages(uint8_t);
-bool ntagSetPassword(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrite = false, uint8_t authlim = 0, uint8_t startPage = 0);
-bool ntagRemovePassword(uint8_t* pass, uint8_t* pack, bool noAuth, bool readAndWrite = false, uint8_t authlim = 0, uint8_t startPage = 0);
-bool writeCheckPointToCard(uint8_t, uint32_t);
-int findNewPage();
-bool checkTeamExists(uint16_t teamNumber);
-bool writeDumpToFlash(uint16_t, uint32_t, uint32_t, uint16_t);
-bool eraseTeamFromFlash(uint16_t);
-bool readTeamFromFlash(uint16_t);
-uint16_t refreshChipCounter();
-void sendError(uint8_t, uint8_t);
-void sendError(uint8_t);
-void addLastTeam(uint16_t, bool);
-void addLastError(uint8_t);
-uint8_t crcCalc(uint8_t*, uint16_t, uint16_t);
-void floatToByte(uint8_t*, float);
-bool selectChipType(uint8_t);
-void checkBatteryLevel();
-void checkClockIsRunning();
-void init_buzzer_pin(uint8_t buzzerPin);
-void set_output(uint8_t pin, int outValue);
-void esp32Tone(uint8_t pwmChannelNum, uint32_t freq);
-void esp32NoTone(uint8_t pwmChannelNum);
 
 void setup()
 {
@@ -193,7 +125,7 @@ void setup()
 	SPI.end();
 #endif
 
-	if (!FFat.begin())
+	if (!FFat.begin(true))
 	{
 #ifdef DEBUG
 		Serial.println(F("!!! FFat failed"));
@@ -245,9 +177,9 @@ void setup()
 
 	//читаем коэфф. пересчета напряжения
 	voltageCoeff = preferences.getFloat(EEPROM_VOLTAGE_KOEFF, 0);
-	if (voltageCoeff == 0)
+	if (voltageCoeff <= 0)
 	{
-		voltageCoeff = 0.1;
+		voltageCoeff = 0.0011;
 #ifdef DEBUG
 		Serial.println(F("!!! VoltageCoeff"));
 #endif
@@ -297,7 +229,7 @@ void setup()
 
 	//читаем минимальное напряжение батареи
 	batteryLimit = preferences.getFloat(EEPROM_BATTERY_LIMIT, -1);
-	if (batteryLimit <= 0)
+	if (batteryLimit < 0)
 	{
 		batteryLimit = 0;
 #ifdef DEBUG
@@ -335,24 +267,10 @@ void setup()
 		btName = String("BtStation-") + String(stationNumber);
 	}
 
+	SerialBT.enableSSP(true, true);  // Must be called before begin
+	SerialBT.onConfirmRequest(BTConfirmRequestCallback);
+	SerialBT.onAuthComplete(BTAuthCompleteCallback);
 	SerialBT.begin(btName.c_str()); //Bluetooth device name
-
-	//читаем Bluetooth пин из памяти
-	String btPin = preferences.getString(EEPROM_STATION_PIN, String(""));
-	if (btPin && btPin.length() > 0)
-	{
-#ifdef DEBUG
-		Serial.println(F("Setting BT Pin: "));
-		Serial.println(btName);
-#endif
-		SerialBT.setPin(btPin.c_str(), btPin.length());
-	}
-	else
-	{
-#ifdef DEBUG
-		Serial.println(F("!!! no BT Pin"));
-#endif
-	}
 
 	//читаем режим авторизации из памяти
 	AuthEnabled = preferences.getBool(EEPROM_AUTH, false);
@@ -500,7 +418,7 @@ bool RfidStart()
 
 	if (AuthEnabled)
 	{
-		result = ntagAuth(AuthPwd, AuthPack);
+		result = ntagAuth(AuthPwd, AuthPack, false);
 	}
 
 	return result;
@@ -982,6 +900,8 @@ bool readUart(Stream& SerialPort)
 			uartBufferPosition = 0;
 			addLastError(UART_UNEXPECTED_BYTE);
 		}
+
+		yield();
 	}
 	return false;
 }
@@ -1077,10 +997,6 @@ void executeCommand()
 		break;
 	case COMMAND_SET_BT_NAME:
 		if (data_length >= DATA_LENGTH_SET_BT_NAME) setBtName();
-		else errorLengthFlag = true;
-		break;
-	case COMMAND_SET_BT_PIN:
-		if (data_length >= DATA_LENGTH_SET_BT_PIN) setBtPinCode();
 		else errorLengthFlag = true;
 		break;
 	case COMMAND_SET_BATTERY_LIMIT:
@@ -1243,6 +1159,8 @@ void resetStation()
 					return;
 				}
 			}
+
+			yield();
 		}
 	}
 
@@ -1368,6 +1286,8 @@ void initChip()
 
 			return;
 		}
+
+		yield();
 	}
 
 	// 0-1: номер команды
@@ -1557,6 +1477,7 @@ void readCardPages()
 			digitalWrite(GREEN_LED_PIN, LOW);
 			return;
 		}
+		yield();
 	}
 
 	// начальная страница
@@ -1588,9 +1509,15 @@ void readCardPages()
 					digitalWrite(GREEN_LED_PIN, LOW);
 					return;
 				}
+
+				yield();
 			}
+
 			pageFrom++;
+			yield();
 		}
+
+		yield();
 	}
 
 	RfidEnd();
@@ -1916,7 +1843,7 @@ void readFlash()
 		if (b < 0x10) Serial.print(F("0"));
 		Serial.println(String(b, HEX));*/
 #endif
-
+		yield();
 	}
 
 	file.close();
@@ -2138,6 +2065,23 @@ void setFlashBlockSize()
 	sendData();
 }
 
+// обработать запрос на подтверждение BT подключения
+void BTConfirmRequestCallback(uint32_t numVal)
+{
+#ifdef DEBUG
+	Serial.printf("The PIN is: %06lu", numVal);  // Note the formatting "%06lu" - PIN can start with zero(s) which would be ignored with simple "%lu"
+#endif
+
+	bool confirmedByButton = !digitalRead(0);
+	if (confirmedByButton)
+		SerialBT.confirmReply(true);
+	else
+		SerialBT.confirmReply(false);
+#ifdef DEBUG
+	Serial.printf("Confirmation: %d", confirmedByButton);
+#endif
+}
+
 // поменять имя BT адаптера
 void setBtName()
 {
@@ -2163,30 +2107,16 @@ void setBtName()
 	sendData();
 }
 
-// поменять пин-код BT адаптера
-void setBtPinCode()
+void BTAuthCompleteCallback(boolean success)
 {
 #ifdef DEBUG
-	Serial.print(F("!!!Set new BT pin"));
-#endif
-	uint16_t data_length = uint16_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE]));
-
-	if (data_length < 1 || data_length>16)
-	{
-		sendError(WRONG_DATA, REPLY_SET_BT_PIN);
-		return;
+	if (success) {
+		Serial.println("Pairing success!!");
 	}
-	String btCommand;
-	btCommand.reserve(data_length + 1);
-	for (uint16_t i = 0; i < data_length; i++)
-		btCommand += String(static_cast<char>(uartBuffer[DATA_START_BYTE + i]));
-
-	preferences.putString(EEPROM_STATION_PIN, btCommand);
-	init_package(REPLY_SET_BT_PIN);
-	// 0: код ошибки
-	if (!addData(OK)) return;
-
-	sendData();
+	else {
+		Serial.println("Pairing failed, rejected by user!!");
+	}
+#endif
 }
 
 // установить лимит срабатывания сигнала о разряде батареи
@@ -2278,7 +2208,9 @@ void getLastErrors()
 			return;
 
 		i++;
+		yield();
 	}
+
 	sendData();
 	for (i = 0; i < LAST_ERRORS_LENGTH; i++)
 		lastErrors[i] = 0;
@@ -2349,9 +2281,9 @@ void unlockChip()
 
 	RfidStart();
 	// Пытаемся авторизоваться с текущим и стандартным ключами
-	bool result = ntagAuth(AuthPwd, AuthPack);
+	bool result = ntagAuth(AuthPwd, AuthPack, true);
 	if (!result)
-		result = ntagAuth(defaultPwd, defaultPack);
+		result = ntagAuth(defaultPwd, defaultPack, true);
 
 	if (!ntagRemovePassword(defaultPwd, defaultPack, true, false, 0, 0xff))
 	{
@@ -2408,6 +2340,7 @@ uint16_t getBatteryLevel()
 		uint16_t val = analogRead(BATTERY_PIN);
 		AverageValue = (AverageValue + val) / 2;
 		delay(5);
+		yield();
 	}
 	return AverageValue;
 }
@@ -2424,6 +2357,8 @@ void beep(uint8_t n, uint16_t ms)
 		digitalWrite(GREEN_LED_PIN, LOW);
 		if (n - 1 > 0)
 			delay(500);
+
+		yield();
 	}
 }
 
@@ -2439,6 +2374,8 @@ void errorBeepMs(uint8_t n, uint16_t ms)
 		digitalWrite(RED_LED_PIN, LOW);
 		if (n - 1 > 0)
 			delay(500);
+
+		yield();
 	}
 }
 
@@ -2454,6 +2391,8 @@ void errorBeep(uint8_t n)
 		digitalWrite(RED_LED_PIN, LOW);
 		if (n - 1 > 0)
 			delay(500);
+
+		yield();
 	}
 }
 
@@ -2514,7 +2453,7 @@ void sendData()
 	uartBufferPosition = 0;
 }
 
-bool ntagAuth(uint8_t* pass, uint8_t* pack)
+bool ntagAuth(uint8_t* pass, uint8_t* pack, bool ignorePack)
 {
 #ifdef DEBUG
 	Serial.println(F("chip authentication"));
@@ -2553,14 +2492,21 @@ bool ntagAuth(uint8_t* pass, uint8_t* pack)
 		Serial.print(F(" "));
 		Serial.println(String(p_Ack[1]));
 #endif
-		if (status && (pack[0] != p_Ack[0] || pack[1] != p_Ack[1]))
-			status = false;
+		if (status)
+		{
+			if (ignorePack)
+				status = true;
+			else if (pack[0] != p_Ack[0] || pack[1] != p_Ack[1])
+				status = false;
+		}
 
 		n++;
 		if (!status)
 		{
 			RfidStart();
 		}
+
+		yield();
 	}
 
 	if (!status)
@@ -2614,6 +2560,8 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 		{
 			RfidStart();
 		}
+
+		yield();
 	}
 
 	if (!status)
@@ -2642,6 +2590,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 			status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size)));
 #endif
 			n++;
+			yield();
 		}
 
 		if (!status)
@@ -2659,7 +2608,6 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 			Serial.print(F(" ?= "));
 			Serial.println(String(data[i]));
 #endif
-
 			if (buffer[i] != data[i])
 			{
 #ifdef DEBUG
@@ -2667,6 +2615,8 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 #endif
 				return false;
 			}
+
+			yield();
 		}
 	}
 
@@ -2702,6 +2652,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 		}
 
 		n++;
+		yield();
 	}
 
 	if (!status)
@@ -2875,13 +2826,15 @@ int findNewPage()
 			}
 
 			// free page found
-			if (ntag_page[n * 4] == 0 ||
-				(stationMode == MODE_FINISH_KP && ntag_page[n * 4] == stationNumber))
+			if (ntag_page[n * 4] == 0 || (stationMode == MODE_FINISH_KP && ntag_page[n * 4] == stationNumber))
 			{
 				return page;
 			}
+
 			page++;
 		}
+
+		yield();
 	}
 
 	// чип заполнен
@@ -3009,7 +2962,7 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 			{
 #ifdef DEBUG
 				Serial.print(F("!!!writing to flash: "));
-				for (uint8_t k = 0; k < 16; k++)Serial.print(String(ntag_page[k], HEX) + " ");
+				for (uint8_t k = 0; k < 16; k++) Serial.print(String(ntag_page[k], HEX) + " ");
 				Serial.println();
 #endif
 				if (!file.write(&ntag_page[0 + i * 4], 4))
@@ -3031,7 +2984,9 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 				break;
 			}
 		}
+
 		block += 4;
+		yield();
 	}
 
 	// add dump pages number
@@ -3112,6 +3067,7 @@ uint16_t refreshChipCounter()
 		}
 
 		file.close();
+		yield();
 	}
 
 #ifdef DEBUG
@@ -3187,6 +3143,7 @@ uint8_t crcCalc(uint8_t* dataArray, uint16_t dataStart, uint16_t dataEnd)
 		}
 
 		dataStart++;
+		yield();
 	}
 
 	return crc;
@@ -3228,6 +3185,9 @@ bool selectChipType(uint8_t type)
 
 void checkBatteryLevel()
 {
+	if (batteryLimit == 0)
+		return;
+
 	batteryLevel = (batteryLevel + getBatteryLevel()) / 2;
 	if ((float)((float)batteryLevel * voltageCoeff) <= batteryLimit)
 	{
@@ -3238,6 +3198,7 @@ void checkBatteryLevel()
 			errorBeep(1);
 			delay(50);
 			digitalWrite(RED_LED_PIN, LOW);
+			batteryAlarmCount = 0;
 		}
 		else
 			batteryAlarmCount++;

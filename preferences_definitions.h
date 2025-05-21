@@ -5,9 +5,6 @@
 // Bluetooth имя
 #define EEPROM_STATION_NAME   "STNAME" // string
 
-// Bluetooth pin
-#define EEPROM_STATION_PIN   "STPIN" // int
-
 // номер режима работы станции
 #define EEPROM_STATION_MODE     "STMODE#" // int
 

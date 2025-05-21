@@ -20,7 +20,6 @@
 #define COMMAND_SET_TEAM_FLASH_SIZE      0x91
 #define COMMAND_SET_FLASH_BLOCK_SIZE     0x92
 #define COMMAND_SET_BT_NAME              0x93
-#define COMMAND_SET_BT_PIN               0x94
 #define COMMAND_SET_BATTERY_LIMIT        0x95
 #define COMMAND_SCAN_TEAMS               0x96
 #define COMMAND_GET_LAST_ERRORS          0x98
@@ -52,7 +51,6 @@
 #define DATA_LENGTH_SET_TEAM_FLASH_SIZE  2
 #define DATA_LENGTH_SET_FLASH_BLOCK_SIZE 2
 #define DATA_LENGTH_SET_BT_NAME          1
-#define DATA_LENGTH_SET_BT_PIN           1
 #define DATA_LENGTH_SET_BATTERY_LIMIT    4
 #define DATA_LENGTH_SCAN_TEAMS           2
 #define DATA_LENGTH_GET_LAST_ERRORS      0
@@ -84,7 +82,6 @@
 #define REPLY_SET_TEAM_FLASH_SIZE        0xa1
 #define REPLY_SET_FLASH_BLOCK_SIZE       0xa2
 #define REPLY_SET_BT_NAME                0xa3
-#define REPLY_SET_BT_PIN                 0xa4
 #define REPLY_SET_BATTERY_LIMIT          0xa5
 #define REPLY_SCAN_TEAMS                 0xa6
 #define REPLY_GET_LAST_ERRORS            0xa8
