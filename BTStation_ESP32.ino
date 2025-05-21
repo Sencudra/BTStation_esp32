@@ -3147,19 +3147,16 @@ bool selectChipType(uint8_t type)
 	if (type == NTAG213_ID) //NTAG213
 	{
 		chipType = NTAG213_ID;
-		//ntagMark = NTAG213_MARK;
 		tagMaxPage = NTAG213_MAX_PAGE;
 	}
 	else if (type == NTAG216_ID) //NTAG216
 	{
 		chipType = NTAG216_ID;
-		//ntagMark = NTAG216_MARK;
 		tagMaxPage = NTAG216_MAX_PAGE;
 	}
 	else if (type == NTAG215_ID)//NTAG215
 	{
 		chipType = NTAG215_ID;
-		//ntagMark = NTAG215_MARK;
 		tagMaxPage = NTAG215_MAX_PAGE;
 	}
 	else
