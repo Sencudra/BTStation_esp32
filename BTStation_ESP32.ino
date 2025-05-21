@@ -991,10 +991,6 @@ void executeCommand()
 		if (data_length == DATA_LENGTH_SET_TEAM_FLASH_SIZE) setTeamFlashSize();
 		else errorLengthFlag = true;
 		break;
-	case COMMAND_SET_FLASH_BLOCK_SIZE:
-		if (data_length == DATA_LENGTH_SET_FLASH_BLOCK_SIZE) setFlashBlockSize();
-		else errorLengthFlag = true;
-		break;
 	case COMMAND_SET_BT_NAME:
 		if (data_length >= DATA_LENGTH_SET_BT_NAME) setBtName();
 		else errorLengthFlag = true;
@@ -2048,17 +2044,6 @@ void setTeamFlashSize()
 	teamFlashSize = n;
 	preferences.putUInt(EEPROM_TEAM_BLOCK_SIZE, teamFlashSize);
 	init_package(REPLY_SET_TEAM_FLASH_SIZE);
-	// 0: код ошибки
-	if (!addData(OK)) return;
-
-	sendData();
-}
-
-// сохранить размер стираемого блока
-// DEPRECATED!!!
-void setFlashBlockSize()
-{
-	init_package(REPLY_SET_FLASH_BLOCK_SIZE);
 	// 0: код ошибки
 	if (!addData(OK)) return;
 

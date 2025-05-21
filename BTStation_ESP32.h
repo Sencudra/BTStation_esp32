@@ -23,7 +23,6 @@ void setVCoeff();
 void setGain();
 void setChipType();
 void setTeamFlashSize();
-void setFlashBlockSize();
 void BTConfirmRequestCallback(uint32_t numVal);
 void BTAuthCompleteCallback(boolean success);
 void setBtName();

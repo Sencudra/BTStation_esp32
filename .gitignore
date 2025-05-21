@@ -342,3 +342,4 @@ ASALocalRun/
 healthchecksdb
 
 _*/
+/BTStation_ESP32.vcxproj
