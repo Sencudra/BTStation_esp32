@@ -12,6 +12,7 @@
 #include "protocol_definitions.h"
 #include "preferences_definitions.h"
 #include <Preferences.h>
+#include "BTStation_ESP32.h"
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
