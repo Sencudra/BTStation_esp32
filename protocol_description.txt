@@ -252,7 +252,25 @@
 		ответ: 0xad
 		0[byte]: код ошибки
 
+	//получить настройки авторизации (вкл./выкл., пароль, ответ)
+	getAuth(): 0x9e
+		ответ: 0xae
+		0[byte]: код ошибки
+		1[byte]: номер 1й ошибки
+		2-5[byte]: AUTH password
+		6-7[byte]: AUTH response
+
+	//получить последние ошибки
+	getBtName(): 0x9f
+		ответ: 0xaf
+		0[byte]: код ошибки
+		1-n[byte]: имя Bluetooth адаптера
+
 5. Список ошибок getLastErrors():
+	//коды ошибок в процессе работы
+	10 - CLOCK_ERROR: часовой чип не работает
+	11 - POWER_UNDERVOLTAGE: низкое напражение батареи
+
 	//коды ошибок при включении
 	50 - STARTUP: incorrect station number in EEPROM
 	51 - STARTUP: incorrect station mode in EEPROM
@@ -263,6 +281,10 @@
 	56 - STARTUP: incorrect erase block size in EEPROM
 	57 - STARTUP: incorrect battery limit in EEPROM
 	58 - STARTUP: incorrect autoreport mode in EEPROM
+	59 - STARTUP: RFID initialization failed
+	90 - STARTUP: incorrect auth mode in EEPROM
+	91 - STARTUP: can't init FFAT
+	92 - STARTUP: can't init settings
 
 	//коды ошибок UART
 	60 - UART: receive timeout
@@ -309,3 +331,6 @@
 	21 - EEPROM_READ_ERROR
 	22 - EEPROM_WRITE_ERROR
 	23 - BT_ERROR
+	24 - PARSE_PACKET_LENGTH_ERROR
+	25 - CHIP_AUTH_ERROR
+	26 - CHIP_SETPASS_ERROR

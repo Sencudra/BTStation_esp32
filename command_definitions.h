@@ -28,6 +28,8 @@
 #define COMMAND_SET_PWD                  0x9b
 #define COMMAND_SET_PACK                 0x9c
 #define COMMAND_UNLOCK_CHIP              0x9d
+#define COMMAND_GET_AUTH                 0x9e
+#define COMMAND_GET_BTNAME               0x9f
 //#define COMMAND_SET_MAX_INIT_DAYS        0x9e
 
 // размеры данных для команд
@@ -59,6 +61,8 @@
 #define DATA_LENGTH_SET_PWD              4
 #define DATA_LENGTH_SET_PACK             2
 #define DATA_LENGTH_UNLOCK_CHIP          0
+#define DATA_LENGTH_GET_AUTH             0
+#define DATA_LENGTH_GET_BTNAME           0
 //#define DATA_LENGTH_SET_MAX_INIT_DAYS    1
 
 // ответы станции
@@ -90,6 +94,8 @@
 #define REPLY_SET_PWD                    0xab
 #define REPLY_SET_PACK                   0xac
 #define REPLY_UNLOCK_CHIP                0xad
+#define REPLY_GET_AUTH						       0xae
+#define REPLY_GET_BTNAME								 0xaf
 //#define REPLY_SET_MAX_INIT_DAYS          0xae
 
 // режимы станции

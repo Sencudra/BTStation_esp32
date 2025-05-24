@@ -34,3 +34,6 @@
 
 // Ключ авторизации
 #define EEPROM_AUTH_PACK        "AUTHPACK" // byte[2]
+
+// Preferences ID
+#define PREFERENCE_NAME					"BTStation"

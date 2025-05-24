@@ -64,8 +64,6 @@ const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;	// максимальны
 float voltageCoeff = 0.0011; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/4.7кОм
 float batteryLimit = 0; // минимальное напряжение батареи
 uint8_t gainCoeff = 96; // коэфф. усиления антенны - работают только биты 4,5,6; значения [0, 16, 32, 48, 64, 80, 96, 112]
-String BTName = "";
-String BTPin = "";
 bool AuthEnabled = false; // авторизация RFID
 uint8_t AuthPwd[4] = { 0xff,0xff,0xff,0xff }; // ключ авторизации RFID
 uint8_t AuthPack[2] = { 0,0 }; // ответ авторизации RFID
@@ -84,7 +82,6 @@ struct ts systemTime;
 uint32_t nextClockCheck = 0;
 uint32_t lastSystemClock = 0;
 uint32_t lastExternalClock = 0;
-
 
 void setup()
 {
@@ -126,23 +123,33 @@ void setup()
 	SPI.end();
 #endif
 
-	if (!FFat.begin(true))
+	if (!FFat.begin())
 	{
 #ifdef DEBUG
-		Serial.println(F("!!! FFat failed"));
+		Serial.println(F("!!! FFat failed. Formatting..."));
 #endif
-		errorBeepMs(4, 200);
-		addLastError(PROCESS_SAVE_DUMP);
+		bool result = FFat.format();
+		if (!result || !FFat.begin())
+		{
+#ifdef DEBUG
+			if (!result)
+				Serial.println(F("!!! FFat format failed"));
+			else
+				Serial.println(F("!!! FFat failed"));
+#endif
+			errorBeepMs(4, 200);
+			addLastError(STARTUP_FFAT);
+		}
 	}
 
 	// read settings
-	if (!preferences.begin("BTStation", false))
+	if (!preferences.begin(PREFERENCE_NAME, false))
 	{
 #ifdef DEBUG
 		Serial.println("Preferences mount failed");
-		errorBeepMs(4, 200);
-		addLastError(PROCESS_SAVE_DUMP);
 #endif
+		errorBeepMs(4, 200);
+		addLastError(STARTUP_SETTINGS);
 	}
 
 	//читаем номер станции из eeprom
@@ -259,13 +266,13 @@ void setup()
 	}
 
 	//читаем Bluetooth имя из памяти
-	String btName = preferences.getString(EEPROM_STATION_NAME, String("BtStation-?"));
+	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
 	if (!btName || btName.length() <= 0)
 	{
 #ifdef DEBUG
 		Serial.println(F("!!! BT Name"));
 #endif
-		btName = String("BtStation-") + String(stationNumber);
+		btName = String("?BtStation-") + String(stationNumber);
 	}
 
 	SerialBT.enableSSP(true, true);  // Must be called before begin
@@ -907,7 +914,7 @@ bool readUart(Stream& SerialPort)
 	return false;
 }
 
-// Commands processing
+#pragma region Commands processing
 
 // поиск функции
 void executeCommand()
@@ -1028,7 +1035,14 @@ void executeCommand()
 		if (data_length == DATA_LENGTH_UNLOCK_CHIP) unlockChip();
 		else errorLengthFlag = true;
 		break;
-
+	case COMMAND_GET_AUTH:
+		if (data_length == DATA_LENGTH_GET_AUTH) getAuth();
+		else errorLengthFlag = true;
+		break;
+	case COMMAND_GET_BTNAME:
+		if (data_length == DATA_LENGTH_GET_BTNAME) getBtName();
+		else errorLengthFlag = true;
+		break;
 	default:
 		sendError(WRONG_COMMAND, uartBuffer[COMMAND_BYTE] + 0x10);
 		break;
@@ -2283,8 +2297,46 @@ void unlockChip()
 	sendData();
 }
 
-// Internal functions
+void getAuth()
+{
+	init_package(REPLY_GET_AUTH);
 
+	// 0: код ошибки
+	if (!addData(OK)) return;
+
+	// 1: режим авторизации
+	if (!addData(AuthEnabled)) return;
+
+	// 2-5: пароль авторизации
+	if (!addData(AuthPwd[0])) return;
+	if (!addData(AuthPwd[1])) return;
+	if (!addData(AuthPwd[2])) return;
+	if (!addData(AuthPwd[3])) return;
+
+	// 6-7: ответ авторизации
+	if (!addData(AuthPack[0])) return;
+	if (!addData(AuthPack[1])) return;
+
+	sendData();
+}
+
+void getBtName()
+{
+	init_package(REPLY_GET_BTNAME);
+
+	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
+	// 0: код ошибки
+	if (!addData(OK)) return;
+
+	// BluetoothName
+	for (int i = 0; i < btName.length(); i++)
+		if (!addData(btName[i])) return;
+
+	sendData();
+}
+#pragma endregion
+
+#pragma region Internal functions
 // заполнить буфер смены маски
 void saveNewMask()
 {
@@ -2837,7 +2889,7 @@ bool checkTeamExists(uint16_t teamNumber)
 	return true;
 }
 
-// пишем дамп чипа в лог
+// пишем дамп чипа во флэш
 bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime, uint16_t mask)
 {
 	// адрес хранения в каталоге
@@ -3242,3 +3294,4 @@ void esp32NoTone(uint8_t pin)
 {
 	ledcWriteTone(pin, 0);
 }
+#pragma endregion
