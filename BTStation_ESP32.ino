@@ -1790,7 +1790,7 @@ void readFlash()
 
 	if (length > uint32_t(uint32_t(MAX_PAKET_LENGTH) - 7 - uint32_t(DATA_LENGTH_READ_FLASH) - 1))
 	{
-		sendError(FLASH_WRITE_ERROR, REPLY_WRITE_FLASH);
+		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
 
@@ -1865,7 +1865,7 @@ void readFlash()
 void writeFlash()
 {
 	// 0-3: адрес начала записи
-	// 1: кол-во записанных байт (для проверки)
+	// 4-n: данные
 	uint32_t startAddress = uartBuffer[DATA_START_BYTE];
 	startAddress <<= 8;
 	startAddress += uartBuffer[DATA_START_BYTE + 1];
@@ -2242,7 +2242,7 @@ void setAuth()
 	sendData();
 }
 
-// установка режима авторизации
+// включение/выключение авторизации
 void setAuthPwd()
 {
 	// 0: новый режим
@@ -2258,7 +2258,7 @@ void setAuthPwd()
 	sendData();
 }
 
-// установка режима авторизации
+// установка ключа авторизации
 void setAuthPack()
 {
 	// 0: новый режим
@@ -2272,6 +2272,7 @@ void setAuthPack()
 	sendData();
 }
 
+// разблокировка чипа
 void unlockChip()
 {
 	init_package(REPLY_UNLOCK_CHIP);
@@ -2297,6 +2298,7 @@ void unlockChip()
 	sendData();
 }
 
+// получить состояние авторизации
 void getAuth()
 {
 	init_package(REPLY_GET_AUTH);
@@ -2320,6 +2322,7 @@ void getAuth()
 	sendData();
 }
 
+// получить имя Bluetooth адаптера
 void getBtName()
 {
 	init_package(REPLY_GET_BTNAME);

@@ -1,6 +1,6 @@
 #pragma once
 // коды ошибок в списке последних ошибок
-#define CLOCK_ERROR							10 //clock chip failure
+#define CLOCK_ERROR					10 //clock chip failure
 #define POWER_UNDERVOLTAGE			11 //battery low
 
 //коды ошибок STARTUP
