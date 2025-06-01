@@ -1825,16 +1825,23 @@ void readFlash()
 		return;
 	}
 
-	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize) + 1;
-	startAddress -= (uint32_t)(startAddress * teamFlashSize);
+	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
+	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
 #ifdef DEBUG
-	//Serial.print(F("!!!address "));
-	//Serial.println(String(uartBufferPosition));
+	Serial.print(F("!!!teamNumber "));
+	Serial.println(String(teamNumber));
+	Serial.print(F("!!!startAddress= "));
+	Serial.println(String(startAddress));
+	Serial.println(teamFile);
+	listDir("/", 1);
+	FFat.exists(teamFile.c_str()) ? Serial.println(F("!!!file exists")) : Serial.println(F("!!!file not exists"));
 #endif
+
 	const String teamFile = teamFilePrefix + String(teamNumber);
 	File file = FFat.open(teamFile, FILE_READ);
 	if (!file)
 	{
+		Serial.print(F("!!!flash read 2"));
 		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
@@ -1844,6 +1851,7 @@ void readFlash()
 	{
 		if (!addData(file.read()))
 		{
+			Serial.print(F("!!!flash read 3"));
 			sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 			return;
 		}
@@ -1878,8 +1886,8 @@ void writeFlash()
 
 	init_package(REPLY_WRITE_FLASH);
 
-	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize) + 1;
-	startAddress -= (uint32_t)(startAddress * teamFlashSize);
+	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
+	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
 	const String teamFile = teamFilePrefix + String(teamNumber);
 	File file = FFat.open(teamFile, FILE_WRITE);
 	if (!file
@@ -2885,11 +2893,7 @@ int findNewPage()
 bool checkTeamExists(uint16_t teamNumber)
 {
 	String teamFile = teamFilePrefix + String(teamNumber);
-	File root = FFat.open(teamFile, FILE_READ);
-	if (!root)
-		return false;
-
-	return true;
+	return FFat.exists(teamFile);
 }
 
 // пишем дамп чипа во флэш
@@ -3297,4 +3301,44 @@ void esp32NoTone(uint8_t pin)
 {
 	ledcWriteTone(pin, 0);
 }
+
+#ifdef DEBUG
+void listDir(const char* dirname, uint8_t levels)
+{
+	Serial.printf("Listing directory: %s\r\n", dirname);
+
+	File root = FFat.open(dirname);
+	if (!root)
+	{
+		Serial.println("- failed to open directory");
+		return;
+	}
+
+	if (!root.isDirectory()) {
+		Serial.println(" - not a directory");
+		return;
+	}
+
+	File file = root.openNextFile();
+	while (file)
+	{
+		if (file.isDirectory())
+		{
+			Serial.print("  DIR : ");
+			Serial.println(file.name());
+			if (levels)
+			{
+				listDir(file.path(), levels - 1);
+			}
+		}
+		else {
+			Serial.print("  FILE: ");
+			Serial.print(file.name());
+			Serial.print("\tSIZE: ");
+			Serial.println(file.size());
+		}
+		file = root.openNextFile();
+	}
+}
+#endif
 #pragma endregion

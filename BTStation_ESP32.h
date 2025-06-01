@@ -68,3 +68,6 @@ void init_buzzer_pin(uint8_t buzzerPin);
 void set_output(uint8_t pin, int outValue);
 void esp32Tone(uint8_t pwmChannelNum, uint32_t freq);
 void esp32NoTone(uint8_t pwmChannelNum);
+#ifdef DEBUG
+void listDir(const char* dirname, uint8_t levels);
+#endif
