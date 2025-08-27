@@ -1,4 +1,7 @@
+#include <Arduino_BuiltIn.h>
+
 //#define DEBUG
+//#define DEBUG1
 //#define BENCHMARK
 #include "FS.h"
 #include "FFat.h"
@@ -58,12 +61,12 @@ bool scanAutoreport = false; // автоматически отправлять 
 uint8_t chipType = NTAG215_ID; // тип чипа
 uint8_t tagMaxPage = NTAG215_MAX_PAGE; // размер чипа в страницах
 uint16_t teamFlashSize = 1024; // размер записи лога
-int maxTeamNumber = 1; // максимальное кол-во записей в флэш-памяти = (flashSize - flashBlockSize) / teamFlashSize - 1;
+int maxTeamNumber = 1; // максимальное кол-во записей в флэш-памяти = (flashSize - flashBlockSize) / teamFlashSize - 1;???
 const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;	// максимальный срок годности чипа [секунд] - дата инициализации
 //7 дней назад от текущего момента. Максимум 194 дня
-float voltageCoeff = 0.0011; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/4.7кОм
+float voltageCoeff = 0.0017; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/4.7кОм
 float batteryLimit = 0; // минимальное напряжение батареи
-uint8_t gainCoeff = 96; // коэфф. усиления антенны - работают только биты 4,5,6; значения [0, 16, 32, 48, 64, 80, 96, 112]
+uint8_t gainCoeff = 16; // коэфф. усиления антенны - работают только биты 4,5,6; значения [0, 16, 32, 48, 64, 80, 96, 112]
 bool AuthEnabled = false; // авторизация RFID
 uint8_t AuthPwd[4] = { 0xff,0xff,0xff,0xff }; // ключ авторизации RFID
 uint8_t AuthPack[2] = { 0,0 }; // ответ авторизации RFID
@@ -356,7 +359,7 @@ void loop()
 	// check receive timeout
 	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)
 	{
-#ifdef DEBUG
+#ifdef DEBUG1
 		//Serial.println(F("!!!receive timeout"));
 #endif
 		uartBufferPosition = 0;
@@ -504,14 +507,14 @@ void processRfidCard()
 
 	/*
 	Фильтруем
-	1 - чип от другой прошивки
+	1 - чип от другой прошивки Отключено!
 	2 - чип более недельной давности инициализации
 	3 - чипы с командой №0 или >maxTeamNumber
 	4 - чип, который совпадает с уже отмеченным (в lastTeams[])
 	*/
 
-	// чип от другой прошивки
-	if (ntag_page[7] != FW_VERSION)
+	// чип от другой прошивки Несовместимость со старыми старнциями!!! Отключено!
+/*	if (ntag_page[7] != FW_VERSION)
 	{
 		RfidEnd();
 #ifdef DEBUG
@@ -520,7 +523,7 @@ void processRfidCard()
 		errorBeep(4);
 		addLastError(PROCESS_FW_VERSION);
 		return;
-	}
+	} 	*/
 
 #ifdef DEBUG
 	Serial.println(F("!!!chip fw version correct"));
@@ -760,7 +763,7 @@ void processRfidCard()
 		//autoreport new command
 		if (/*digitalRead(BT_CONNECTED) || */Serial)
 		{
-#ifdef DEBUG
+#ifdef DEBUG1
 			Serial.print(F("!!!Autoreport team #"));
 			Serial.println(String(teamNumber));
 #endif
@@ -797,7 +800,7 @@ bool readUart(Stream& SerialPort)
 
 		if (c == -1) // can't read stream
 		{
-#ifdef DEBUG
+#ifdef DEBUG1
 			Serial.println(F("!!! UART read error"));
 #endif
 			uartBufferPosition = 0;
@@ -835,7 +838,7 @@ bool readUart(Stream& SerialPort)
 				&& uint32_t(
 					uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE])) > uint16_t(uint16_t(MAX_PAKET_LENGTH) - uint16_t(DATA_START_BYTE)))
 			{
-#ifdef DEBUG
+#ifdef DEBUG1
 				Serial.println(F("!!!incorrect length"));
 #endif
 				uartBufferPosition = 0;
@@ -850,7 +853,7 @@ bool readUart(Stream& SerialPort)
 			if (uartBufferPosition > DATA_LENGTH_LOW_BYTE && uartBufferPosition >= uint32_t(uint32_t(DATA_START_BYTE) + uint32_t(uint32_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint32_t(256) + uint32_t(uartBuffer[DATA_LENGTH_LOW_BYTE]))))
 			{
 				// crc matching
-#ifdef DEBUG
+#ifdef DEBUG1
 				Serial.print(F("!!!received packet expected CRC="));
 				Serial.println(String(crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1), HEX));
 #endif
@@ -861,7 +864,7 @@ bool readUart(Stream& SerialPort)
 						&& uartBuffer[COMMAND_BYTE] != COMMAND_GET_STATUS
 						&& uartBuffer[COMMAND_BYTE] != COMMAND_GET_CONFIG)
 					{
-#ifdef DEBUG
+#ifdef DEBUG1
 						Serial.println(F("!!!incorrect station#"));
 #endif
 						uartBufferPosition = 0;
@@ -871,7 +874,7 @@ bool readUart(Stream& SerialPort)
 						sendError(WRONG_STATION, uartBuffer[COMMAND_BYTE] + 0x10);
 						return false;
 					}
-#ifdef DEBUG
+#ifdef DEBUG1
 					Serial.print(F("!!!Command received:"));
 					for (uint8_t i = 0; i <= uartBufferPosition; i++)
 					{
@@ -887,7 +890,7 @@ bool readUart(Stream& SerialPort)
 				}
 				else // CRC not correct
 				{
-#ifdef DEBUG
+#ifdef DEBUG1
 					Serial.println(F("!!!incorrect crc"));
 #endif
 					uartBufferPosition = 0;
@@ -901,7 +904,7 @@ bool readUart(Stream& SerialPort)
 		}
 		else
 		{
-#ifdef DEBUG
+#ifdef DEBUG1
 			Serial.println(F("!!!unexpected byte"));
 #endif
 			receivingData = false;
@@ -918,8 +921,8 @@ bool readUart(Stream& SerialPort)
 
 // поиск функции
 void executeCommand()
-{
-#ifdef DEBUG
+{ 
+#ifdef DEBUG1
 	Serial.print(F("!!!Command: "));
 	Serial.println(String(uartBuffer[COMMAND_BYTE], HEX));
 #endif
@@ -1051,7 +1054,7 @@ void executeCommand()
 	uartBufferPosition = 0;
 	if (errorLengthFlag)
 	{
-#ifdef DEBUG
+#ifdef DEBUG1
 		Serial.println(F("!!!Incorrect data length"));
 #endif
 		sendError(WRONG_PACKET_LENGTH, uartBuffer[COMMAND_BYTE] + 0x10);
@@ -1610,18 +1613,18 @@ void updateTeamMask()
 	}
 
 	// неправильный тип чипа
-	/*if (ntag_page[2] != NTAG_MARK)
+	if (ntag_page[2] != chipType) //NTAG_MARK
 	{
 		RfidEnd();
 #ifdef DEBUG
 			Serial.println(F("!!!incorrect chip"));
-#endif
+#endif break
 			sendError(WRONG_CHIP_TYPE, REPLY_UPDATE_TEAM_MASK);
 			return;
-		}*/
+		}
 
 		// чип от другой прошивки
-	if (ntag_page[3] != FW_VERSION)
+	/*if (ntag_page[3] != FW_VERSION)
 	{
 		RfidEnd();
 #ifdef DEBUG
@@ -1629,7 +1632,7 @@ void updateTeamMask()
 #endif
 		sendError(WRONG_FW_VERSION, REPLY_UPDATE_TEAM_MASK);
 		return;
-	}
+	}*/
 
 	// Не слишком ли старый чип? Недельной давности и более
 	uint32_t timeInit = ntag_page[4];
@@ -1794,12 +1797,12 @@ void readFlash()
 		return;
 	}
 
-#ifdef DEBUG
+//#ifdef DEBUG
 	Serial.print(F("!!!flash read="));
 	Serial.print(String(startAddress));
 	Serial.print(F("/"));
 	Serial.println(String(length));
-#endif
+//#endif
 
 	init_package(REPLY_READ_FLASH);
 
@@ -1809,10 +1812,10 @@ void readFlash()
 	if (!addData(OK))
 		return;
 
-#ifdef DEBUG
+//#ifdef DEBUG
 	Serial.print(F("!!!OK "));
 	Serial.println(String(uartBufferPosition));
-#endif
+//#endif
 
 	bool flag = true;
 	flag &= addData((startAddress & 0xFF000000) >> 24);
@@ -1825,23 +1828,27 @@ void readFlash()
 		return;
 	}
 
-	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
+	uint16_t teamNumber = (uint16_t)(startAddress/ teamFlashSize);
 	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
-#ifdef DEBUG
+	
+	const String teamFile = teamFilePrefix + String(teamNumber); //перенос с 1845
+	File file = FFat.open(teamFile, FILE_READ);//перенос с 1846
+
+//#ifdef DEBUG
 	Serial.print(F("!!!teamNumber "));
 	Serial.println(String(teamNumber));
 	Serial.print(F("!!!startAddress= "));
 	Serial.println(String(startAddress));
-	Serial.println(teamFile);
-	listDir("/", 1);
-	FFat.exists(teamFile.c_str()) ? Serial.println(F("!!!file exists")) : Serial.println(F("!!!file not exists"));
-#endif
+	Serial.println(teamFile); //Compilation error: 'teamFile' was not declared in this scope
+	//listDir("/", 1); //Compilation error: 'listDir' was not declared in this scope
+	FFat.exists(teamFile.c_str()) ? Serial.println(F("!!!file exists")) : Serial.println(F("!!!file not exists"));// Compilation error: 'teamFile' was not declared in this scope
+//#endif
 
-	const String teamFile = teamFilePrefix + String(teamNumber);
-	File file = FFat.open(teamFile, FILE_READ);
+//	const String teamFile = teamFilePrefix + String(teamNumber); //перенес раньше!
+//File file = FFat.open(teamFile, FILE_READ); //перенес раньше!
 	if (!file)
 	{
-		Serial.print(F("!!!flash read 2"));
+		Serial.print(F("!!!flash read 2")); //Возможно Debug?
 		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
@@ -1851,16 +1858,16 @@ void readFlash()
 	{
 		if (!addData(file.read()))
 		{
-			Serial.print(F("!!!flash read 3"));
+		  Serial.print(F("!!!flash read 3")); //Возможно Debug?
 			sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 			return;
 		}
 
 #ifdef DEBUG
-		/*Serial.print(String(i));
+	  Serial.print(String(i));// откуда i
 		Serial.print(F("="));
-		if (b < 0x10) Serial.print(F("0"));
-		Serial.println(String(b, HEX));*/
+		if (b < 0x10) Serial.print(F("0"));// откуда b
+		Serial.println(String(b, HEX));
 #endif
 		yield();
 	}
@@ -1920,7 +1927,7 @@ void eraseTeamFlash()
 	uint32_t teamNumber = uartBuffer[DATA_START_BYTE];
 	teamNumber <<= 8;
 	teamNumber += uartBuffer[DATA_START_BYTE + 1];
-#ifdef DEBUG
+#ifdef DEBUG1
 	Serial.print(F("!!!erasing "));
 	Serial.println(String(teamNumber));
 #endif
@@ -2076,7 +2083,7 @@ void setTeamFlashSize()
 // обработать запрос на подтверждение BT подключения
 void BTConfirmRequestCallback(uint32_t numVal)
 {
-#ifdef DEBUG
+#ifdef DEBUG1
 	Serial.printf("The PIN is: %06lu", numVal);  // Note the formatting "%06lu" - PIN can start with zero(s) which would be ignored with simple "%lu"
 #endif
 
@@ -2117,7 +2124,7 @@ void setBtName()
 
 void BTAuthCompleteCallback(boolean success)
 {
-#ifdef DEBUG
+#ifdef DEBUG1
 	if (success) {
 		Serial.println("Pairing success!!");
 	}
@@ -2155,7 +2162,7 @@ void setBatteryLimit()
 // получить список команд на флэше
 void scanTeams()
 {
-#ifdef DEBUG
+#ifdef DEBUG1
 	Serial.print(F("!!!Scan commands in flash"));
 #endif
 
@@ -2180,14 +2187,14 @@ void scanTeams()
 	//uint8_t data[2];
 	for (; startNumber <= maxTeamNumber; startNumber++)
 	{
-#ifdef DEBUG
+#ifdef DEBUG1
 		Serial.print(F("!!!Trying "));
 		Serial.println(String(startNumber));
 #endif
 
 		if (checkTeamExists(startNumber))
 		{
-#ifdef DEBUG
+#ifdef DEBUG1
 			Serial.print(F("!!!Found "));
 			Serial.println(String(startNumber));
 #endif
