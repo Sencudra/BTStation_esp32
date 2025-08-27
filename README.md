@@ -11,3 +11,17 @@ https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/e
 ToDo:
 1) Optimize the workflow considering the available memory amount.
 2) Consider the energy consumption optimization.
+
+
+## Notes for CI
+
+### Arduino CLI
+
+1. Update core index from configuration file arduino_cli.yaml
+    arduino-cli core update-index --config-file arduino_cli.yaml
+2. arduino-cli core install esp32:esp32
+3.  arduino-cli compile -b esp32:esp32:esp32
+4. arduino-cli lib install --zip-path libs/ds3231.zip --config-file arduino_cli.yaml
+5. arduino-cli lib install --zip-path libs/ds3231.zip --config-file arduino_cli.yaml
+6. arduino-cli lib install "Adafruit BusIO@1.17.2"
+7. For USE_PN532 two more libs should be installed from zip: SPI and MFRC522
