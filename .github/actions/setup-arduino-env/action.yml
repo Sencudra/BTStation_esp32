@@ -36,7 +36,7 @@ runs:
           echo "No $LIBRARIES_PATH found"
           exit 1
         fi
-        xargs -a "$LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_FILE"' "{}"'
+        xargs -a "$LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
 
     - name: Install libraries from zip
       shell: bash
@@ -45,11 +45,11 @@ runs:
           echo "No $ZIP_LIBRARIES_PATH found"
           exit 1
         fi
-        xargs -a "$ZIP_LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_FILE"' "{}"'
+        xargs -a "$ZIP_LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
 
     - name: Cache Environment
       uses: actions/cache@v4
       with:
         path: |
           ~/.arduino
-        key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}-${{ hashFiles("$LIBRARIES_PATH", "$ZIP_LIBRARIES_PATH")}}
+        key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}-${{ hashFiles(env.LIBRARIES_PATH, env.ZIP_LIBRARIES_PATH)}}
