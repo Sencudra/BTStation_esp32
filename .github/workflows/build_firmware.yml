@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@main
 
-      - name: Setup environment
+      - name: Setup Environment
         uses: ./.github/actions/setup-environment
 
       - name: Compile Sketch
@@ -37,3 +37,9 @@ jobs:
             ${{ matrix.rfid == 'mfrc522' && '-DUSE_MFRC522' || '' }}
 
         run: ./bin/common/build_firmware.sh
+
+      - name: Upload Artifacts
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: ./.github/actions/upload-artifact
+        with:
+          artifact-path: ./BTStation_ESP32/build
