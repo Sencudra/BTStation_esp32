@@ -1,0 +1,3 @@
+ds3231
+MFRC522
+SPIMemory
