@@ -22,16 +22,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@main
 
-      - name: Setup Arduino environment
-        uses: ./.github/actions/setup-arduino-env
+      - name: Setup environment
+        uses: ./.github/actions/setup-environment
         with:
           vendor: ${{ matrix.vendor }}
           architecture: ${{ matrix.architecture }}
-          board-id: ${{ matrix.board-id }}
 
-      # - name: Compile Sketch
-      #   run: |
-      #     CONFIG_FILE="$GITHUB_WORKSPACE/BTStation_ESP32/arduino_cli.yaml"
-      #     FQBN="${{ matrix.vendor }}:${{ matrix.architecture }}:${{ matrix.board-id }}"
-      #     echo "Compiling with FQBN=$FQBN"
-      #     arduino-cli compile --config-file "$CONFIG_FILE" --fqbn "$FQBN" ./Blink --warnings more
+      - name: Compile Sketch
+        run: |
+          CONFIG_FILE="$GITHUB_WORKSPACE/BTStation_ESP32/arduino_cli.yaml"
+          FQBN="${{ matrix.vendor }}:${{ matrix.architecture }}:${{ matrix.board-id }}"
+          echo "Compiling with FQBN=$FQBN"
+          arduino-cli compile --config-file "$CONFIG_FILE" --fqbn "$FQBN" ./Blink --warnings more
