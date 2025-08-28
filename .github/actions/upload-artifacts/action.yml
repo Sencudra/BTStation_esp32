@@ -1,0 +1,32 @@
+name: "Publish Firmware Artifact"
+description: "Packages firmware and uploads artifact if push to main"
+
+inputs:
+  artifact-path:
+    description: "Path to compiled firmware build output"
+    required: true
+  tag:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create ZIP
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+      run: |
+        VERSION=$(date +'%Y.%m.%d-%H%M')
+        ZIP_NAME="firmware-${TAG}-${VERSION}.zip"
+
+        mkdir -p artifacts
+        cp -r "${{ inputs.artifact-path }}"/* artifacts/ || true
+        zip -jr "$ZIP_NAME" artifacts/*
+
+        echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ZIP_NAME }}
+        path: ${{ env.ZIP_NAME }}

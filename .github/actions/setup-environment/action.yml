@@ -1,0 +1,25 @@
+name: Setup Build Environment
+description: Setups arduino-cli, platform core and libraries.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Arduino CLI
+      uses: arduino/setup-arduino-cli@v2.0.0
+
+    - name: Cache Environment
+      id: arduino-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.arduino
+        key: arduino-${{ hashFiles('BTStation_ESP32/libs/**', 'BTStation_ESP32/libs_custom/**') }}
+
+    - name: Install platform and libraries
+      if: steps.arduino-cache.outputs.cache-hit != 'true'
+      env:
+        CONFIG_PATH: ./BTStation_ESP32/arduino_cli.yaml
+        PLATFORM: esp32:esp32
+
+      shell: bash
+      run: ./bin/common/install_requirements.sh

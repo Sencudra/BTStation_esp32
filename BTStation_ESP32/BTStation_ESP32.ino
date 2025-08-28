@@ -23,7 +23,7 @@
 #endif
 
 #if defined(USE_PN532)
-#include "Adafruit_PN532.h"
+#include <Adafruit_PN532.h>
 #else
 #include <SPI.h>
 #include <MFRC522.h>
@@ -1827,17 +1827,17 @@ void readFlash()
 
 	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
 	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
-#ifdef DEBUG
-	Serial.print(F("!!!teamNumber "));
-	Serial.println(String(teamNumber));
-	Serial.print(F("!!!startAddress= "));
-	Serial.println(String(startAddress));
-	Serial.println(teamFile);
-	listDir("/", 1);
-	FFat.exists(teamFile.c_str()) ? Serial.println(F("!!!file exists")) : Serial.println(F("!!!file not exists"));
-#endif
-
+	
 	const String teamFile = teamFilePrefix + String(teamNumber);
+	#ifdef DEBUG
+		Serial.print(F("!!!teamNumber "));
+		Serial.println(String(teamNumber));
+		Serial.print(F("!!!startAddress= "));
+		Serial.println(String(startAddress));
+		Serial.println(teamFile);
+		listDir("/", 1);
+		FFat.exists(teamFile.c_str()) ? Serial.println(F("!!!file exists")) : Serial.println(F("!!!file not exists"));
+	#endif
 	File file = FFat.open(teamFile, FILE_READ);
 	if (!file)
 	{
@@ -2629,7 +2629,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 		n = 0;
 		uint8_t const buffer_size = 18;
 		uint8_t buffer[buffer_size];
-		uint8_t size = buffer_size;
+		// uint8_t size = buffer_size;
 		status = false;
 		while (!status && n < 3)
 		{

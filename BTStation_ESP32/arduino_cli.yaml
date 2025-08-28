@@ -2,5 +2,10 @@ board_manager:
     additional_urls:
         - https://espressif.github.io/arduino-esp32/package_esp32_index.json
 
-library:
-    enable_unsafe_install: true # To install libraries from .zip
+directories:
+    data: .arduino/data
+    downloads: .arduino/staging
+    user: .arduino/libraries
+
+sketch:
+    always_export_binaries: true
