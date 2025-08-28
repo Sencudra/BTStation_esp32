@@ -23,4 +23,6 @@ fi
 
 export PROJECT_DIR PROFILE CONFIG_PATH EXTRA_FLAGS
 
+rm -Rf "$PROJECT_DIR/build"
+
 "$SCRIPT_DIR/common/build_firmware.sh"

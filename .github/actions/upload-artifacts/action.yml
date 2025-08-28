@@ -5,19 +5,23 @@ inputs:
   artifact-path:
     description: "Path to compiled firmware build output"
     required: true
+  tag:
+    required: true
 
 runs:
   using: "composite"
   steps:
     - name: Create ZIP
       shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
       run: |
         VERSION=$(date +'%Y.%m.%d-%H%M')
-        ZIP_NAME="firmware-${VERSION}.zip"
+        ZIP_NAME="firmware-${TAG}-${VERSION}.zip"
 
         mkdir -p artifacts
         cp -r "${{ inputs.artifact-path }}"/* artifacts/ || true
-        zip -j "$ZIP_NAME" artifacts/*
+        zip -jr "$ZIP_NAME" artifacts/*
 
         echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
