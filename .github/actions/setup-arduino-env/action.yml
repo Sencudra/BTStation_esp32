@@ -12,12 +12,6 @@ inputs:
     description:
     required: true
 
-env:
-  CONFIG_PATH: ./BTStation_ESP32/arduino_cli.yaml
-  LIBRARIES_DESCRIPTION_PATH: ./BTStation_ESP32/libs/description.txt
-  ZIP_LIBRARIES_PATH: ./BTStation_ESP32/libs_custom
-  ZIP_LIBRARIES_DESCRIPTION_PATH: ./BTStation_ESP32/libs_custom/description.txt
-
 runs:
   using: composite
   steps:
@@ -30,23 +24,30 @@ runs:
       with:
         path: |
           ~/.arduino
-        key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}-${{ hashFiles(env.LIBRARIES_PATH, env.ZIP_LIBRARIES_PATH)}}
+        key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}--${{ hashFiles('BTStation_ESP32/libs/**', 'BTStation_ESP32/libs_custom/**') }}
 
     - name: Install platform and libraries
       if: steps.arduino-cache.outputs.cache-hit != 'true'
+      env:
+        PLATFORM: ${{ inputs.vendor }}:${{ inputs.architecture }}
+        CONFIG_PATH: ./BTStation_ESP32/arduino_cli.yaml
+        LIBRARIES_DESCRIPTION_PATH: ./BTStation_ESP32/libs/description.txt
+        ZIP_LIBRARIES_PATH: ./BTStation_ESP32/libs_custom
+        ZIP_LIBRARIES_DESCRIPTION_PATH: ./BTStation_ESP32/libs_custom/description.txt
+
       shell: bash
       run: |
-        arduino-cli core update-index --config-file "env.CONFIG_PATH"
-        arduino-cli core install --config-file "env.CONFIG_PATH" "${{ inputs.vendor }}:${{ inputs.architecture }}"
+        arduino-cli core update-index --config-file "$CONFIG_PATH"
+        arduino-cli core install --config-file "$CONFIG_PATH" "$PLATFORM"
 
-        if [ ! -f "env.LIBRARIES_PATH" ]; then
+        if [ ! -f "$LIBRARIES_DESCRIPTION_PATH" ]; then
           echo "No file for libraries found"
           exit 1
         fi
-        xargs -a "env.LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"env.CONFIG_PATH"' "{}"'
+        xargs -a "$LIBRARIES_DESCRIPTION_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
 
-        if [ ! -f "env.ZIP_LIBRARIES_PATH" ]; then
+        if [ ! -f "$ZIP_LIBRARIES_DESCRIPTION_PATH" ]; then
           echo "No file for zip libraries found"
           exit 1
         fi
-        xargs -a "env.ZIP_LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"env.CONFIG_PATH"' --zip-path "env.ZIP_LIBRARIES_PATH/{}.zip"'
+        xargs -a "$ZIP_LIBRARIES_DESCRIPTION_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' --zip-path "$ZIP_LIBRARIES_PATH/{}.zip"'
