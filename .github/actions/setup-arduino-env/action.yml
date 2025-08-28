@@ -1,0 +1,56 @@
+name: Setup Build Environment
+description: Installs arduino-cli, platform core and libraries.
+inputs:
+  vendor:
+    description: Arduino platform core to install (e.g., esp32)
+    required: true
+  architecture:
+    description: 
+    required: true
+  board-id:
+    description:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Arduino CLI
+      uses: arduino/setup-arduino-cli@v1.3.0
+
+    - name: Install platform
+      shell: bash
+      run: |
+        arduino-cli core update-index --config-file "$GITHUB_WORKSPACE/BTStation_ESP32/arduino_cli.yaml"
+        arduino-cli core install "${{ inputs.vendor }}:${{ inputs.architecture }}"
+
+    - name: Cache Environment
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.arduino
+          ~/.cache/arduino-cli
+        key: ${{ runner.os }}-arduino-${{ inputs.vendor }}-${{ inputs.architecture }}
+        restore-keys: |
+          ${{ runner.os }}-arduino-${{ inputs.vendor }}-${{ inputs.architecture }}-
+
+    # - name: Cache Arduino Libraries
+    #   uses: actions/cache@v4
+    #   with:
+    #     path: |
+    #       ~/Arduino/libraries
+    #     key: ${{ runner.os }}-arduino-libs-${{ hashFiles('**/arduino-libraries.txt') }}
+    #     restore-keys: |
+    #       ${{ runner.os }}-arduino-libs-
+
+
+    # - name: Install libraries (if arduino-libraries.txt exists)
+    #   shell: bash
+    #   run: |
+    #     CONFIG_FILE="$GITHUB_WORKSPACE/BTStation_ESP32/arduino_cli.yaml"
+    #     if [ -f arduino-libraries.txt ]; then
+    #       echo "Installing libraries from arduino-libraries.txt"
+    #       xargs -a arduino-libraries.txt -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_FILE"' "{}"'
+    #     else
+    #       echo "No arduino-libraries.txt found, skipping library installation"
+    #     fi
+

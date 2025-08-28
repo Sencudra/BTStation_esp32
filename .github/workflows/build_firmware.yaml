@@ -1,0 +1,37 @@
+name: Firmware Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    strategy:
+      matrix:
+        vendor: ["esp32"]
+        architecture: ["esp32"]
+        board-id: ["esp32"]
+        environment: [debug, production]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Setup Arduino environment
+        uses: ./.github/actions/setup-arduino-env
+        with:
+          vendor: ${{ matrix.vendor }}
+          architecture: ${{ matrix.architecture }}
+          board_id: ${{ matrix.board-id }}
+
+      # - name: Compile Sketch
+      #   run: |
+      #     CONFIG_FILE="$GITHUB_WORKSPACE/BTStation_ESP32/arduino_cli.yaml"
+      #     FQBN="${{ matrix.vendor }}:${{ matrix.architecture }}:${{ matrix.board-id }}"
+      #     echo "Compiling with FQBN=$FQBN"
+      #     arduino-cli compile --config-file "$CONFIG_FILE" --fqbn "$FQBN" ./Blink --warnings more
