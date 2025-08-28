@@ -14,7 +14,7 @@ jobs:
         vendor: ["esp32"]
         architecture: ["esp32"]
         board-id: ["esp32"]
-        environment: [debug, production]
+        environment: [debug] # , production]
 
     runs-on: ubuntu-latest
 
@@ -27,7 +27,7 @@ jobs:
         with:
           vendor: ${{ matrix.vendor }}
           architecture: ${{ matrix.architecture }}
-          board_id: ${{ matrix.board-id }}
+          board-id: ${{ matrix.board-id }}
 
       # - name: Compile Sketch
       #   run: |
