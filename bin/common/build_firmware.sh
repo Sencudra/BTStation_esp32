@@ -1,13 +1,15 @@
+#!/bin/bash
+set -e  # Exit on any error
+
 echo "Compiling firmware with settings:"
-echo "FQBN=$FQBN"
 echo "PROJECT_DIR=$PROJECT_DIR"
+echo "PROFILE=$PROFILE"
 echo "CONFIG_PATH=$CONFIG_PATH"
-echo "Flags=$EXTRA_FLAGS"
+echo "EXTRA_FLAGS=$EXTRA_FLAGS"
 
 arduino-cli compile \
     --config-file "$CONFIG_PATH" \
     --warnings more \
-    --fqbn "$FQBN" \
-    --profile default \
-    --build-property "build.extra_flags=$EXTRA_FLAGS" \
+    --profile "$PROFILE" \
+    --build-property "compiler.cpp.extra_flags=$EXTRA_FLAGS" \
     "$PROJECT_DIR" 

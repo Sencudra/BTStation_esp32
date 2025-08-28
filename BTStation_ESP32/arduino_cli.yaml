@@ -6,6 +6,3 @@ directories:
     data: .arduino/data
     downloads: .arduino/staging
     user: .arduino/libraries
-
-library:
-    enable_unsafe_install: true # To install libraries from .zip

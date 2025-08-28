@@ -1,13 +1,5 @@
 name: Setup Build Environment
-description: Installs arduino-cli, platform core and libraries.
-
-inputs:
-  vendor:
-    description: Arduino platform core to install (e.g., esp32)
-    required: true
-  architecture:
-    description: 
-    required: true
+description: Setups arduino-cli, platform core and libraries.
 
 runs:
   using: composite
@@ -26,25 +18,8 @@ runs:
     - name: Install platform and libraries
       if: steps.arduino-cache.outputs.cache-hit != 'true'
       env:
-        PLATFORM: ${{ inputs.vendor }}:${{ inputs.architecture }}
         CONFIG_PATH: ./BTStation_ESP32/arduino_cli.yaml
-        LIBRARIES_DESCRIPTION_PATH: ./BTStation_ESP32/libs/description.txt
-        ZIP_LIBRARIES_PATH: ./BTStation_ESP32/libs_custom
-        ZIP_LIBRARIES_DESCRIPTION_PATH: ./BTStation_ESP32/libs_custom/description.txt
+        PLATFORM: esp32:esp32
 
       shell: bash
-      run: |
-        arduino-cli core update-index --config-file "$CONFIG_PATH"
-        arduino-cli core install --config-file "$CONFIG_PATH" "$PLATFORM"
-
-        if [ ! -f "$LIBRARIES_DESCRIPTION_PATH" ]; then
-          echo "No file for libraries found"
-          exit 1
-        fi
-        xargs -a "$LIBRARIES_DESCRIPTION_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
-
-        if [ ! -f "$ZIP_LIBRARIES_DESCRIPTION_PATH" ]; then
-          echo "No file for zip libraries found"
-          exit 1
-        fi
-        xargs -a "$ZIP_LIBRARIES_DESCRIPTION_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' --zip-path "$ZIP_LIBRARIES_PATH/{}.zip"'
+      run: ./bin/common/install_requirements.sh

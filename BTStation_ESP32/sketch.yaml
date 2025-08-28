@@ -1,0 +1,11 @@
+profiles:
+  default:
+    fqbn: esp32:esp32:esp32
+    platforms:
+      - platform: esp32:esp32
+    libraries:
+      - dir: libs_custom/SPIMemory
+      - dir: libs_custom/Adafruit_PN532
+      - dir: libs_custom/ds3231
+      - dir: libs_custom/MFRC522
+      - Adafruit BusIO (1.17.2)

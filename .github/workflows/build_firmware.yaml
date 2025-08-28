@@ -11,10 +11,9 @@ jobs:
 
     strategy:
       matrix:
-        vendor: ["esp32"]
-        architecture: ["esp32"]
-        board-id: ["esp32"]
-        environment: [debug] # , production]
+        sketch-profile: [default]
+        rfid: [pn532, mfrc522]
+        environment: [debug, production]
 
     runs-on: ubuntu-latest
 
@@ -24,13 +23,17 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-environment
-        with:
-          vendor: ${{ matrix.vendor }}
-          architecture: ${{ matrix.architecture }}
 
       - name: Compile Sketch
-        run: |
-          CONFIG_FILE="$GITHUB_WORKSPACE/BTStation_ESP32/arduino_cli.yaml"
-          FQBN="${{ matrix.vendor }}:${{ matrix.architecture }}:${{ matrix.board-id }}"
-          echo "Compiling with FQBN=$FQBN"
-          arduino-cli compile --config-file "$CONFIG_FILE" --fqbn "$FQBN" ./Blink --warnings more
+        env:
+          PROJECT_DIR: ./BTStation_ESP32
+          PROFILE: ${{ matrix.sketch-profile }}
+          CONFIG_PATH: ./BTStation_ESP32/arduino_cli.yaml
+
+          # Convert matrix.environment into -D flag
+          EXTRA_FLAGS: >-
+            ${{ matrix.environment == 'debug' && '-DDEBUG' || '' }}
+            ${{ matrix.rfid == 'pn532' && '-DUSE_PN532' || '' }}
+            ${{ matrix.rfid == 'mfrc522' && '-DUSE_MFRC522' || '' }}
+
+        run: ./bin/common/build_firmware.sh
