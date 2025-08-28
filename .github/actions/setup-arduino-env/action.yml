@@ -21,12 +21,14 @@ runs:
   using: composite
   steps:
     - name: Setup Arduino CLI
-      uses: arduino/setup-arduino-cli@v2.0.0
+      uses: arduino/setup-arduino-cli@v2
+      with:
+        version: "1.1.1"
 
     - name: Install platform
       shell: bash
       run: |
-        arduino-cli core update-index --config-file "$CONFIG_PATH"
+        arduino-cli core update-index --config-file env.CONFIG_PATH
         arduino-cli core install --config-file "$CONFIG_PATH" "${{ inputs.vendor }}:${{ inputs.architecture }}"
 
     - name: Install libraries from web
