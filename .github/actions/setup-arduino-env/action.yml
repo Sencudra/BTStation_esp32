@@ -15,7 +15,7 @@ runs:
   using: composite
   steps:
     - name: Setup Arduino CLI
-      uses: arduino/setup-arduino-cli@v1.3.0
+      uses: arduino/setup-arduino-cli@v2.0.0
 
     - name: Install platform
       shell: bash
