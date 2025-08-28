@@ -21,37 +21,35 @@ runs:
   using: composite
   steps:
     - name: Setup Arduino CLI
-      uses: arduino/setup-arduino-cli@v2
-      with:
-        version: "1.1.1"
+      uses: arduino/setup-arduino-cli@v2.0.0
 
     - name: Install platform
       shell: bash
       run: |
-        arduino-cli core update-index --config-file env.CONFIG_PATH
-        arduino-cli core install --config-file "$CONFIG_PATH" "${{ inputs.vendor }}:${{ inputs.architecture }}"
+        arduino-cli core update-index --config-file "env.CONFIG_PATH"
+        arduino-cli core install --config-file "env.CONFIG_PATH" "${{ inputs.vendor }}:${{ inputs.architecture }}"
 
-    - name: Install libraries from web
-      shell: bash
-      run: |
-        if [ ! -f "$LIBRARIES_PATH" ]; then
-          echo "No $LIBRARIES_PATH found"
-          exit 1
-        fi
-        xargs -a "$LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
+    # - name: Install libraries from web
+    #   shell: bash
+    #   run: |
+    #     if [ ! -f "$LIBRARIES_PATH" ]; then
+    #       echo "No $LIBRARIES_PATH found"
+    #       exit 1
+    #     fi
+    #     xargs -a "$LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
 
-    - name: Install libraries from zip
-      shell: bash
-      run: |
-        if [ ! -f "$ZIP_LIBRARIES_PATH" ]; then
-          echo "No $ZIP_LIBRARIES_PATH found"
-          exit 1
-        fi
-        xargs -a "$ZIP_LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
+    # - name: Install libraries from zip
+    #   shell: bash
+    #   run: |
+    #     if [ ! -f "$ZIP_LIBRARIES_PATH" ]; then
+    #       echo "No $ZIP_LIBRARIES_PATH found"
+    #       exit 1
+    #     fi
+    #     xargs -a "$ZIP_LIBRARIES_PATH" -r -I {} sh -c 'arduino-cli lib install --config-file '"$CONFIG_PATH"' "{}"'
 
-    - name: Cache Environment
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.arduino
-        key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}-${{ hashFiles(env.LIBRARIES_PATH, env.ZIP_LIBRARIES_PATH)}}
+    # - name: Cache Environment
+    #   uses: actions/cache@v4
+    #   with:
+    #     path: |
+    #       ~/.arduino
+    #     key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}-${{ hashFiles(env.LIBRARIES_PATH, env.ZIP_LIBRARIES_PATH)}}
