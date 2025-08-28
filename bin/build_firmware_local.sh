@@ -17,6 +17,10 @@ if [ "$DEBUG" = "1" ]; then
     EXTRA_FLAGS="$EXTRA_FLAGS -DDEBUG"
 fi
 
+if [ "$DEBUG" = "1" ]; then
+    EXTRA_FLAGS="$EXTRA_FLAGS -DUSE_PN532"
+fi
+
 export PROJECT_DIR PROFILE CONFIG_PATH EXTRA_FLAGS
 
 "$SCRIPT_DIR/common/build_firmware.sh"

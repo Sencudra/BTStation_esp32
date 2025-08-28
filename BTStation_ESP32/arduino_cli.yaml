@@ -6,3 +6,6 @@ directories:
     data: .arduino/data
     downloads: .arduino/staging
     user: .arduino/libraries
+
+sketch:
+    always_export_binaries: true
