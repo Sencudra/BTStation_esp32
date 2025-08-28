@@ -13,7 +13,7 @@ runs:
       with:
         path: |
           ~/.arduino
-        key: arduino-${{ inputs.vendor }}-${{ inputs.architecture }}--${{ hashFiles('BTStation_ESP32/libs/**', 'BTStation_ESP32/libs_custom/**') }}
+        key: arduino-${{ hashFiles('BTStation_ESP32/libs/**', 'BTStation_ESP32/libs_custom/**') }}
 
     - name: Install platform and libraries
       if: steps.arduino-cache.outputs.cache-hit != 'true'
