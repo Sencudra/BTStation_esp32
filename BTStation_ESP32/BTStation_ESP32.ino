@@ -111,6 +111,7 @@ void setup()
 	}
 #else
 	SPI.begin();
+	mfrc522.PCD_Init();
 	byte s = mfrc522.PCD_ReadRegister(MFRC522::PCD_Register::VersionReg);
 	if (s == 0 || s == 0xff)
 	{
@@ -272,7 +273,7 @@ void setup()
 #ifdef DEBUG
 		Serial.println(F("!!! BT Name"));
 #endif
-		btName = String("?BtStation-") + String(stationNumber);
+		btName = String("SportStation-") + String(stationNumber);
 	}
 
 	SerialBT.enableSSP(true, true);  // Must be called before begin
@@ -2629,7 +2630,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 		n = 0;
 		uint8_t const buffer_size = 18;
 		uint8_t buffer[buffer_size];
-		// uint8_t size = buffer_size;
+		uint8_t size = buffer_size;
 		status = false;
 		while (!status && n < 3)
 		{
