@@ -94,8 +94,8 @@
 #define REPLY_SET_PWD                    0xab
 #define REPLY_SET_PACK                   0xac
 #define REPLY_UNLOCK_CHIP                0xad
-#define REPLY_GET_AUTH						       0xae
-#define REPLY_GET_BTNAME								 0xaf
+#define REPLY_GET_AUTH				     0xae
+#define REPLY_GET_BTNAME				 0xaf
 //#define REPLY_SET_MAX_INIT_DAYS          0xae
 
 // режимы станции

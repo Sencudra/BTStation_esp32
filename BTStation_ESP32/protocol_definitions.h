@@ -1,4 +1,5 @@
 #pragma once
+
 // описание протокола
 #define HEADER_BYTE           0
 #define PACKET_ID_BYTE        1
