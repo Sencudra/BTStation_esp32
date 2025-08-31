@@ -9,3 +9,6 @@ directories:
 
 sketch:
     always_export_binaries: true
+    
+library:
+  enable_unsafe_install: true
