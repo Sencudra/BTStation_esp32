@@ -12,8 +12,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.arduino
-        key: arduino-${{ hashFiles('BTStation_ESP32/libs/**', 'BTStation_ESP32/libs_custom/**') }}
+          ./.arduino
+        key: arduino-${{ hashFiles('BTStation_ESP32/arduino_cli.yaml', 'BTStation_ESP32/sketch.yaml') }}
 
     - name: Install platform and libraries
       if: steps.arduino-cache.outputs.cache-hit != 'true'
