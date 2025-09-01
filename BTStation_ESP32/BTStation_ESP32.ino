@@ -1159,7 +1159,7 @@ void initChip()
 	// номер команды, тип чипа, версия прошивки станции
 	dataBlock[0] = uartBuffer[DATA_START_BYTE];
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 1];
-	dataBlock[2] = 0;//ntagMark;
+	dataBlock[2] = chipType;
 	dataBlock[3] = FW_VERSION;
 	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM, true, false))
 	{
@@ -1760,7 +1760,7 @@ void getConfig()
 	flag &= addData(OK);
 	flag &= addData(FW_VERSION);
 	flag &= addData(stationMode);
-	flag &= addData(chipType); //ntagMark
+	flag &= addData(chipType);
 
 	uint32_t n = FFat.totalBytes();
 	flag &= addData((n & 0xFF000000) >> 24);
