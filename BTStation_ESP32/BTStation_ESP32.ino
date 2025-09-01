@@ -102,7 +102,7 @@ void setup()
 #if defined(USE_PN532)
 	if (!pn532.begin())
 	{
-		debugError("PN532 initialization failed");
+		debugError(F("PN532 initialization failed"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_RFID);
 	}
@@ -112,7 +112,7 @@ void setup()
 	byte s = mfrc522.PCD_ReadRegister(MFRC522::PCD_Register::VersionReg);
 	if (s == 0 || s == 0xff)
 	{
-		debugError("MFRC522 initialization failed");
+		debugError(F("MFRC522 initialization failed"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_RFID);
 	}
@@ -121,14 +121,14 @@ void setup()
 
 	if (!FFat.begin())
 	{
-		debugError("FFat failed, formatting...");
+		debugError(F("FFat failed, formatting..."));
 		bool result = FFat.format();
 		if (!result || !FFat.begin())
 		{
 			if (!result)
-				debugError("FFat format failed");
+				debugError(F("FFat format failed"));
 			else
-				debugError("FFat failed after format");
+				debugError(F("FFat failed after format"));
 			errorBeepMs(4, 200);
 			addLastError(STARTUP_FFAT);
 		}
@@ -137,7 +137,7 @@ void setup()
 	// read settings
 	if (!preferences.begin(PREFERENCE_NAME, false))
 	{
-		debugError("Preferences mount failed");
+		debugError(F("Preferences mount failed"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_SETTINGS);
 	}
@@ -147,7 +147,7 @@ void setup()
 	if (c == 0xff)
 	{
 		stationNumber = 0;
-		debugError("Station number not set");
+		debugError(F("Station number not set"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_NUMBER);
 	}
@@ -164,7 +164,7 @@ void setup()
 	else
 	{
 		stationMode = MODE_INIT;
-		debugError("Station mode invalid");
+		debugError(F("Station mode invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_MODE);
 	}
@@ -174,7 +174,7 @@ void setup()
 	if (voltageCoeff <= 0)
 	{
 		voltageCoeff = 0.0011;
-		debugError("Station voltage coefficient invalid");
+		debugError(F("Station voltage coefficient invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_GAIN); //STARTUP: incorrect gain in EEPROM
 	}
@@ -186,7 +186,7 @@ void setup()
 	else
 	{
 		gainCoeff = 96;
-		debugError("Station antenna gain invalid");
+		debugError(F("Station antenna gain invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_GAIN); //STARTUP: incorrect gain in EEPROM
 	}
@@ -198,7 +198,7 @@ void setup()
 	else
 	{
 		selectChipType(NTAG215_ID);
-		debugError("Station chip type invalid");
+		debugError(F("Station chip type invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_CHIP_TYPE);
 	}
@@ -208,7 +208,7 @@ void setup()
 	if (teamFlashSize == 0)
 	{
 		teamFlashSize = 1024;
-		debugError("Station team size invalid");
+		debugError(F("Station team size invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_TEAM_SIZE);
 	}
@@ -218,7 +218,7 @@ void setup()
 	if (batteryLimit < 0)
 	{
 		batteryLimit = 0;
-		debugError("Station", "battery limit invalid");
+		debugError(F("Station battery limit invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_BATTERY_LIMIT);
 	}
@@ -234,7 +234,7 @@ void setup()
 	else
 	{
 		scanAutoreport = false;
-		debugError("Station", "auto report setting invalid");
+		debugError(F("Station auto report setting invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_AUTOREPORT);
 	}
@@ -243,7 +243,7 @@ void setup()
 	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
 	if (!btName || btName.length() <= 0)
 	{
-		debugError("Bluetooth", "name not set");
+		debugError(F("Bluetooth name not set"));
 		btName = String("SportStation-") + String(stationNumber);
 	}
 
@@ -260,7 +260,7 @@ void setup()
 	if (c != 4)
 	{
 		AuthEnabled = false;
-		debugError("Auth", "password invalid");
+		debugError(F("Auth password invalid"));
 	}
 
 	//читаем ответ авторизации RFID из памяти
@@ -268,7 +268,7 @@ void setup()
 	if (c != 2)
 	{
 		AuthEnabled = false;
-		debugError("Auth", "pack invalid");
+		debugError(F("Auth pack invalid"));
 	}
 
 	const uint32_t flashSize = FFat.freeBytes();
@@ -319,7 +319,7 @@ void loop()
 	// check receive timeout
 	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)
 	{
-		debugError("Receive timeout");
+		debugError(F("Receive timeout"));
 		uartBufferPosition = 0;
 		uartReady = false;
 		receivingData = false;
