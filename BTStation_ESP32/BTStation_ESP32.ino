@@ -1,5 +1,3 @@
-#define USE_PN532
-
 #include <Wire.h>
 #include <FS.h>
 #include <FFat.h>
