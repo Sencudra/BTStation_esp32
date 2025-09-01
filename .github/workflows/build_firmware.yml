@@ -39,7 +39,6 @@ jobs:
         run: ./bin/common/build_firmware.sh
 
       - name: Upload Artifacts
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: ./.github/actions/upload-artifacts
         with:
           artifact-path: ./BTStation_ESP32/build
