@@ -52,8 +52,8 @@ uint16_t lastTeamFlag = 0; // номер последней отмеченной
 
 const String teamFilePrefix = "/team";
 
-uint8_t stationNumber = 0; // номер станции по умолчанию
-uint8_t stationMode = MODE_INIT; // режим станции по умолчанию
+uint8_t stationNumber = 0;
+uint8_t stationMode = MODE_INIT;
 bool scanAutoreport = false; // автоматически отправлять данные сканирования в UART порт
 uint8_t chipType = NTAG215_ID; // тип чипа
 uint8_t tagMaxPage = NTAG215_MAX_PAGE; // размер чипа в страницах
@@ -144,26 +144,16 @@ void setup()
 	}
 
 	//читаем номер станции из eeprom
-	uint32_t c = preferences.getUInt(EEPROM_STATION_NUMBER, 0xff);
-	if (c == 0xff)
-	{
-		stationNumber = 0;
+	stationNumber = preferences.getUInt(EEPROM_STATION_NUMBER, 0);
+	if (stationNumber == 0) {
 		logError(F("Station number not set"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_NUMBER);
 	}
-	else stationNumber = c;
 
 	//читаем номер режима из eeprom
-	c = preferences.getUInt(EEPROM_STATION_MODE, 0xff);
-	if (c == MODE_INIT)
-		stationMode = MODE_INIT;
-	else if (c == MODE_START_KP)
-		stationMode = MODE_START_KP;
-	else if (c == MODE_FINISH_KP)
-		stationMode = MODE_FINISH_KP;
-	else
-	{
+	stationMode = preferences.getUInt(EEPROM_STATION_MODE, 0xff);
+	if (stationMode == 0xff) {
 		stationMode = MODE_INIT;
 		logError(F("Station mode invalid"));
 		errorBeepMs(4, 200);
@@ -172,8 +162,7 @@ void setup()
 
 	//читаем коэфф. пересчета напряжения
 	voltageCoeff = preferences.getFloat(EEPROM_VOLTAGE_KOEFF, 0);
-	if (voltageCoeff <= 0)
-	{
+	if (voltageCoeff <= 0) {
 		voltageCoeff = 0.0011;
 		logError(F("Station voltage coefficient invalid"));
 		errorBeepMs(4, 200);
@@ -181,11 +170,8 @@ void setup()
 	}
 
 	//читаем коэфф. усиления
-	c = preferences.getUInt(EEPROM_GAIN, 0xff);
-	if (c != 0xff)
-		gainCoeff = c;
-	else
-	{
+	gainCoeff = preferences.getUInt(EEPROM_GAIN, 0xff);
+	if (gainCoeff == 0xff) {
 		gainCoeff = 96;
 		logError(F("Station antenna gain invalid"));
 		errorBeepMs(4, 200);
@@ -193,11 +179,11 @@ void setup()
 	}
 
 	//читаем тип чипа
-	c = preferences.getUInt(EEPROM_CHIP_TYPE, 0xff);
-	if (c != 0xff)
-		selectChipType(c);
-	else
-	{
+	uint8_t chipType = preferences.getUInt(EEPROM_CHIP_TYPE, 0xff);
+	if (chipType != 0xff) {
+		selectChipType(chipType);
+	}
+	else {
 		selectChipType(NTAG215_ID);
 		logError(F("Station chip type invalid"));
 		errorBeepMs(4, 200);
@@ -215,8 +201,7 @@ void setup()
 
 	//читаем минимальное напряжение батареи
 	batteryLimit = preferences.getFloat(EEPROM_BATTERY_LIMIT, -1);
-	if (batteryLimit < 0)
-	{
+	if (batteryLimit < 0) {
 		batteryLimit = 0;
 		logError(F("Station battery limit invalid"));
 		errorBeepMs(4, 200);
@@ -224,15 +209,14 @@ void setup()
 	}
 
 	//читаем режим автооповещения из памяти
-	c = preferences.getUInt(EEPROM_AUTOREPORT, 0xff);
-	if (c == AUTOREPORT_ON)
+	uint8_t scanAutoreportRaw = preferences.getUInt(EEPROM_AUTOREPORT, 0xff);
+	if (scanAutoreportRaw == AUTOREPORT_ON) {
 		scanAutoreport = true;
-	else if (c == AUTOREPORT_OFF)
-	{
+	}
+	else if (scanAutoreportRaw == AUTOREPORT_OFF) {
 		scanAutoreport = false;
 	}
-	else
-	{
+	else {
 		scanAutoreport = false;
 		logError(F("Station auto report setting invalid"));
 		errorBeepMs(4, 200);
@@ -241,8 +225,7 @@ void setup()
 
 	//читаем Bluetooth имя из памяти
 	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
-	if (!btName || btName.length() <= 0)
-	{
+	if (!btName || btName.length() <= 0) {
 		logError(F("Bluetooth name not set"));
 		btName = String("SportStation-") + String(stationNumber);
 	}
@@ -256,17 +239,15 @@ void setup()
 	AuthEnabled = preferences.getBool(EEPROM_AUTH, false);
 
 	//читаем ключ авторизации RFID из памяти
-	c = preferences.getBytes(EEPROM_AUTH_PWD, AuthPwd, 4);
-	if (c != 4)
-	{
+	uint32_t c = preferences.getBytes(EEPROM_AUTH_PWD, AuthPwd, 4);
+	if (c != 4) {
 		AuthEnabled = false;
 		logError(F("Auth password invalid"));
 	}
 
 	//читаем ответ авторизации RFID из памяти
 	c = preferences.getBytes(EEPROM_AUTH_PACK, AuthPack, 2);
-	if (c != 2)
-	{
+	if (c != 2) {
 		AuthEnabled = false;
 		logError(F("Auth pack invalid"));
 	}
@@ -396,7 +377,7 @@ void RfidEnd()
 // Обработка поднесенного чипа
 void processRfidCard()
 {
-	if (stationNumber == 0 || stationNumber == 0xff)
+	if (stationNumber == 0 || stationNumber == 0xffffffff)
 		return;
 
 #ifdef BENCHMARK
@@ -950,8 +931,7 @@ void setTime()
 }
 
 // сброс настроек станции
-void resetStation()
-{
+void resetStation() {
 	// 0-1: кол-во отмеченных чипов (для сверки)
 	// 2-5: время последней отметки(для сверки)
 	// 6 : новый номер станции
@@ -991,6 +971,9 @@ void resetStation()
 
 	stationMode = 0;
 	preferences.putUInt(EEPROM_STATION_MODE, stationMode);
+
+	teamFlashSize = EEPROM_TEAM_BLOCK_SIZE_DEFAULT;
+	preferences.putUInt(EEPROM_TEAM_BLOCK_SIZE, teamFlashSize);
 
 	lastTimeChecked = 0;
 	totalChipsChecked = 0;
@@ -1877,14 +1860,14 @@ void BTConfirmRequestCallback(uint32_t numVal) {
 void setBtName() {
 	logDebug(F("Set new BT name"));
 	uint16_t name_length = readUInt16(uartBuffer + DATA_LENGTH_HIGH_BYTE);
-	if (data_length < 1 || data_length > 32) {
+	if (name_length < 1 || name_length > 32) {
 		sendError(WRONG_DATA, REPLY_SET_BT_NAME);
 		return;
 	}
 
 	String btCommand;
-	btCommand.reserve(data_length + 1);
-	for (uint16_t i = 0; i < data_length; ++i) {
+	btCommand.reserve(name_length + 1);
+	for (uint16_t i = 0; i < name_length; ++i) {
 		btCommand += String(static_cast<char>(uartBuffer[DATA_START_BYTE + i]));
 	}
 
