@@ -679,14 +679,10 @@ void processRfidCard()
 }
 
 // обработка входящих команд
-bool readUart(Stream& SerialPort)
-{
-	while (SerialPort.available())
-	{
+bool readUart(Stream& SerialPort) {
+	while (SerialPort.available()) {
 		int c = SerialPort.read();
-
-		if (c == -1) // can't read stream
-		{
+		if (c == -1) { // can't read stream
 			logError(F("UART read error"));
 			uartBufferPosition = 0;
 			receivingData = false;
@@ -694,38 +690,36 @@ bool readUart(Stream& SerialPort)
 		}
 
 		// 0 byte = FE
-		if (uartBufferPosition == HEADER_BYTE && c == 0xfe)
-		{
-			logDebugHex(F("Byte 0"), c);
+		if (uartBufferPosition == HEADER_BYTE && c == 0xfe) {
+			logDebug(F("Recevied inital byte"));
 			receivingData = true;
 			uartBuffer[uartBufferPosition] = uint8_t(c);
-			uartBufferPosition++;
-			// refresh timeout
-			receiveStartTime = millis();
+			++uartBufferPosition;
+			receiveStartTime = millis(); // refresh timeout
 		}
 		// 1st byte = ID, Station number, Command, Length and Data
-		else if (receivingData)
-		{
+		else if (receivingData) {
 			uartBuffer[uartBufferPosition] = uint8_t(c);
-			logDebugHex(F("Byte 1"), c);
-			// incorrect length
-			if (uartBufferPosition == DATA_LENGTH_LOW_BYTE
-				&& uint32_t(
-					uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE])) > uint16_t(uint16_t(MAX_PAKET_LENGTH) - uint16_t(DATA_START_BYTE)))
-			{
-				logError(F("Incorrect length"));
+			if (uartBufferPosition == DATA_LENGTH_LOW_BYTE) {
+				uint16_t length = readUInt16(uartBuffer + DATA_LENGTH_HIGH_BYTE);
 
-				uartBufferPosition = 0;
-				receivingData = false;
-				errorBeepMs(3, 50);
-				addLastError(UART_PACKET_LENGTH);
-				sendError(PARSE_PACKET_LENGTH_ERROR, uartBuffer[COMMAND_BYTE] + 0x10);
-				return false;
+				// incorrect length
+				if (length > MAX_PAKET_LENGTH - DATA_START_BYTE) {
+					logError(F("Incorrect length"));
+
+					uartBufferPosition = 0;
+					receivingData = false;
+					errorBeepMs(3, 50);
+					addLastError(UART_PACKET_LENGTH);
+					sendError(PARSE_PACKET_LENGTH_ERROR, uartBuffer[COMMAND_BYTE] + 0x10);
+					return false;
+				}
 			}
 
 			// packet is received
-			if (uartBufferPosition > DATA_LENGTH_LOW_BYTE && uartBufferPosition >= uint32_t(uint32_t(DATA_START_BYTE) + uint32_t(uint32_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint32_t(256) + uint32_t(uartBuffer[DATA_LENGTH_LOW_BYTE]))))
-			{
+			if (uartBufferPosition >= DATA_START_BYTE + readUInt16(uartBuffer + DATA_LENGTH_HIGH_BYTE)) {
+				logDebugHexArray(F("Packet received"), uartBuffer, uartBufferPosition + 1);
+
 				// crc matching
 				logDebugHex(F("Expected CRC"), crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1));
 				if (uartBuffer[uartBufferPosition] == crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1))
@@ -744,13 +738,11 @@ bool readUart(Stream& SerialPort)
 						return false;
 					}
 
-					logDebugHexArray(F("Command received"), uartBuffer, uartBufferPosition + 1);
 					uartBufferPosition = 0;
 					receivingData = false;
 					return true;
 				}
-				else // CRC not correct
-				{
+				else { // CRC not correct
 					logError(F("Incorrect CRC"));
 					uartBufferPosition = 0;
 					receivingData = false;
@@ -759,10 +751,9 @@ bool readUart(Stream& SerialPort)
 					return false;
 				}
 			}
-			uartBufferPosition++;
+			++uartBufferPosition;
 		}
-		else
-		{
+		else {
 			logError(F("Unexpected byte"));
 			receivingData = false;
 			uartBufferPosition = 0;
@@ -1244,7 +1235,7 @@ void getLastTeams()
 		//stop if command is empty
 		// if (lastTeams[i] + lastTeams[i + 1] == 0) break;
 		if (!addData(lastTeams[i])) return;
-		i++;
+		++i;
 		if (!addData(lastTeams[i])) return;
 	}
 	sendData();
@@ -1375,7 +1366,7 @@ void readCardPages()
 				yield();
 			}
 
-			pageFrom++;
+			++pageFrom;
 			yield();
 		}
 
@@ -1690,12 +1681,12 @@ void writeFlash() {
 
 	init_package(REPLY_WRITE_FLASH);
 
-	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
-	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
+	uint16_t teamNumber = startAddress / teamFlashSize;
+	uint32_t teamFlashOffset = startAddress % teamFlashSize;
 
 	const String teamFile = teamFilePrefix + String(teamNumber);
 	File file = FFat.open(teamFile, FILE_WRITE);
-	if (!file || !file.seek(startAddress) || length != file.write(reinterpret_cast<uint8_t*>(uartBuffer[DATA_START_BYTE + 4]), length)) {
+	if (!file || !file.seek(teamFlashOffset) || length != file.write(reinterpret_cast<uint8_t*>(uartBuffer[DATA_START_BYTE + 4]), length)) {
 		file.close();
 		logError(F("Failed to write to flash"));
 		sendError(FLASH_WRITE_ERROR, REPLY_WRITE_FLASH);
@@ -1998,7 +1989,7 @@ void getLastErrors()
 		if (!addData(lastErrors[i]))
 			return;
 
-		i++;
+		++i;
 		yield();
 	}
 
@@ -2240,7 +2231,7 @@ bool addData(uint8_t data)
 	}
 
 	uartBuffer[uartBufferPosition] = data;
-	uartBufferPosition++;
+	++uartBufferPosition;
 
 	return true;
 }
@@ -2251,7 +2242,7 @@ void sendData()
 	uartBuffer[DATA_LENGTH_HIGH_BYTE] = (uartBufferPosition - DATA_LENGTH_LOW_BYTE - 1) >> 8;
 	uartBuffer[DATA_LENGTH_LOW_BYTE] = (uartBufferPosition - DATA_LENGTH_LOW_BYTE - 1) & 0x0FF;
 	uartBuffer[uartBufferPosition] = crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1);
-	uartBufferPosition++;
+	++uartBufferPosition;
 
 	logDebug(F("Sending data"));
 	logDebugHexArray(F("Data"), uartBuffer, uartBufferPosition);
@@ -2290,7 +2281,7 @@ bool ntagAuth(uint8_t* pass, uint8_t* pack, bool ignorePack)
 				status = false;
 		}
 
-		n++;
+		++n;
 		if (!status)
 		{
 			RfidStart();
@@ -2330,7 +2321,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 
 		logDebug(F("Status"), status);
 
-		n++;
+		++n;
 		if (!status)
 		{
 			RfidStart();
@@ -2360,7 +2351,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 #else
 			status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size)));
 #endif
-			n++;
+			++n;
 			yield();
 		}
 
@@ -2410,7 +2401,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 			logDebug(F("Chip re-initialized"));
 		}
 
-		n++;
+		++n;
 		yield();
 	}
 
@@ -2582,7 +2573,7 @@ int findNewPage()
 				return page;
 			}
 
-			page++;
+			++page;
 		}
 
 		yield();
@@ -2756,7 +2747,7 @@ uint16_t refreshChipCounter()
 		file.readBytes(data, 12);
 		if (data[0] != 0xff && data[1] != 0xff)
 		{
-			chips++;
+			++chips;
 			uint32_t time = data[8];
 			time <<= 8;
 			time += data[9];
@@ -2816,7 +2807,7 @@ void addLastTeam(uint16_t teamNumber, bool already_checked)
 	lastTeams[1] = uint8_t(teamNumber);
 
 	if (!already_checked)
-		totalChipsChecked++;
+		++totalChipsChecked;
 }
 
 // добавляем код ошибки в буфер последних ошибок
@@ -2846,7 +2837,7 @@ uint8_t crcCalc(uint8_t* dataArray, uint16_t dataStart, uint16_t dataEnd)
 			tmpByte >>= 1;
 		}
 
-		dataStart++;
+		++dataStart;
 		yield();
 	}
 
@@ -2901,8 +2892,9 @@ void checkBatteryLevel()
 			digitalWrite(RED_LED_PIN, LOW);
 			batteryAlarmCount = 0;
 		}
-		else
-			batteryAlarmCount++;
+		else {
+			++batteryAlarmCount;
+		}
 	}
 	else
 		batteryAlarmCount = 0;
