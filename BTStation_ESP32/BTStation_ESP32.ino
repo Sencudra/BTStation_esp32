@@ -1,3 +1,5 @@
+#define USE_PN532
+
 #include <Wire.h>
 #include <FS.h>
 #include <FFat.h>
@@ -319,13 +321,12 @@ bool RfidStart()
 	uint8_t uid[8] = { 0 };	// Buffer to store the returned UID
 	uint8_t uidLength;		// Length of the UID (4 or 7 bytes depending on ISO14443A card type)
 	result = pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
-	if (result)
-	{
-		debugSuccess("RFID", "chip found");
-		debugPrintValue("UID length", uidLength);
+	if (result) {
+		logDebug(F("RFID chip is found. UID uidLength:"), uidLength);
 	}
-	else
-		debugState("RFID", "chip not found");
+	else {
+		logDebug(F("RFID chip not found"));
+	}
 
 #else
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
@@ -2315,15 +2316,15 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 		n = 0;
 		uint8_t const buffer_size = 18;
 		uint8_t buffer[buffer_size];
-		uint8_t size = buffer_size;
 		status = false;
-		while (!status && n < 3)
-		{
-#if defined(USE_PN532)
-			status = pn532.ntag2xx_Read4Pages(pageAdr, buffer);
-#else
-			status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size)));
-#endif
+		while (!status && n < 3) {
+			#if defined(USE_PN532)
+				status = pn532.ntag2xx_Read4Pages(pageAdr, buffer);
+			#else
+				uint8_t size = buffer_size;
+				status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size)));
+			#endif
+			
 			++n;
 			yield();
 		}
