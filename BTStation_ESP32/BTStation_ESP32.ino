@@ -57,7 +57,7 @@ uint8_t stationMode = MODE_INIT; // режим станции по умолча�
 bool scanAutoreport = false; // автоматически отправлять данные сканирования в UART порт
 uint8_t chipType = NTAG215_ID; // тип чипа
 uint8_t tagMaxPage = NTAG215_MAX_PAGE; // размер чипа в страницах
-uint16_t teamFlashSize = 1024; // размер записи лога
+uint16_t teamFlashSize = EEPROM_TEAM_BLOCK_SIZE_DEFAULT; // размер записи лога
 int maxTeamNumber = 1; // максимальное кол-во записей в флэш-памяти = (flashSize - flashBlockSize) / teamFlashSize - 1;
 const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;	// максимальный срок годности чипа [секунд] - дата инициализации
 //7 дней назад от текущего момента. Максимум 194 дня
@@ -205,10 +205,9 @@ void setup()
 	}
 
 	//читаем размер блока команды
-	teamFlashSize = preferences.getUInt(EEPROM_TEAM_BLOCK_SIZE, 0);
-	if (teamFlashSize == 0)
-	{
-		teamFlashSize = 1024;
+	teamFlashSize = preferences.getUInt(EEPROM_TEAM_BLOCK_SIZE, EEPROM_TEAM_BLOCK_SIZE_DEFAULT);
+	if (teamFlashSize == 0) {
+		teamFlashSize = EEPROM_TEAM_BLOCK_SIZE_DEFAULT;
 		logError(F("Station team size invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_TEAM_SIZE);
@@ -1851,9 +1850,8 @@ void setChipType()
 void setTeamFlashSize()
 {
 	// 0-1: размер блока
-	uint16_t n = uint16_t(uint16_t(uint16_t(uartBuffer[DATA_START_BYTE]) * 256) + uint16_t(uartBuffer[DATA_START_BYTE + 1]));
-	if (n < 16)
-	{
+	uint16_t n = readUInt16(uartBuffer + DATA_START_BYTE); 
+	if (n < 16) {
 		sendError(WRONG_SIZE, REPLY_SET_TEAM_FLASH_SIZE);
 		return;
 	}
