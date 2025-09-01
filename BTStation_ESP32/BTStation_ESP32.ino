@@ -1,11 +1,12 @@
 #define USE_PN532
-
+//#define DEBUG
 #include <Wire.h>
 #include <FS.h>
 #include <FFat.h>
 #include <BluetoothSerial.h>
 #include <Preferences.h>
 #include <ds3231.h>
+#include <esp_mac.h>
 
 #include "BTStation_ESP32.h"
 #include "command_definitions.h"
@@ -16,6 +17,7 @@
 #include "preferences_definitions.h"
 #include "basic_helpers.h"
 #include "debug_helpers.h"
+
 
 #if defined(USE_PN532)
 #include <Adafruit_PN532.h>
@@ -61,7 +63,7 @@ uint8_t chipType = NTAG215_ID; // тип чипа
 uint8_t tagMaxPage = NTAG215_MAX_PAGE; // размер чипа в страницах
 uint16_t teamFlashSize = EEPROM_TEAM_BLOCK_SIZE_DEFAULT; // размер записи лога
 int maxTeamNumber = 1; // максимальное кол-во записей в флэш-памяти = (flashSize - flashBlockSize) / teamFlashSize - 1;
-const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;	// максимальный срок годности чипа [секунд] - дата инициализации
+const uint32_t maxTimeInit = 7UL * 24UL * 60UL * 60UL;    // максимальный срок годности чипа [секунд] - дата инициализации
 //7 дней назад от текущего момента. Максимум 194 дня
 float voltageCoeff = 0.0011; // коэфф. перевода значения АЦП в напряжение для делителя 10кОм/4.7кОм
 float batteryLimit = 0; // минимальное напряжение батареи
@@ -144,7 +146,69 @@ void setup()
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_SETTINGS);
 	}
+	setupVars();
+	//читаем Bluetooth имя из памяти
+	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
+	if (!btName || btName.length() <= 0) {
+		logError(F("Bluetooth name not set"));
+		uint8_t mac[6];
+		esp_read_mac(mac, ESP_MAC_BT);
+		btName = String("SportStation-") + String(mac[4], HEX) + String(":") + String(mac[5], HEX);
+	}
 
+	SerialBT.enableSSP(true, true); // Must be called before begin
+	SerialBT.onConfirmRequest(BTConfirmRequestCallback);
+	SerialBT.onAuthComplete(BTAuthCompleteCallback);
+	SerialBT.begin(btName.c_str()); //Bluetooth device name
+}
+
+void loop()
+{
+	//если режим КП то отметить чип автоматом
+	if (stationMode != MODE_INIT && millis() >= rfidReadStartTime)
+	{
+		processRfidCard();
+		rfidReadStartTime = millis() + RFID_READ_PERIOD;
+	}
+
+	// check UART for data
+	if (Serial.available())
+	{
+		logDebug(F("UART data available"));
+		uartReady = readUart(Serial);
+	}
+
+	// check Bluetooth for data
+	if (SerialBT.available())
+	{
+		logDebug(F("Bluetooth data available"));
+		uartReady = readUart(SerialBT);
+	}
+
+	//обработать пришедшую команду
+	if (uartReady)
+	{
+		uartReady = false;
+		executeCommand();
+	}
+
+	// check receive timeout
+	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)
+	{
+		logError(F("Receive timeout"));
+		uartBufferPosition = 0;
+		uartReady = false;
+		receivingData = false;
+		//errorBeepMs(1, 50);
+		addLastError(UART_TIMEOUT);
+	}
+
+	checkBatteryLevel();
+	checkClockIsRunning();
+}
+
+void setupVars()
+{
 	//читаем номер станции из eeprom
 	stationNumber = preferences.getUInt(EEPROM_STATION_NUMBER, 0);
 	if (stationNumber == 0) {
@@ -225,18 +289,6 @@ void setup()
 		addLastError(STARTUP_AUTOREPORT);
 	}
 
-	//читаем Bluetooth имя из памяти
-	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
-	if (!btName || btName.length() <= 0) {
-		logError(F("Bluetooth name not set"));
-		btName = String("SportStation-") + String(stationNumber);
-	}
-
-	SerialBT.enableSSP(true, true);  // Must be called before begin
-	SerialBT.onConfirmRequest(BTConfirmRequestCallback);
-	SerialBT.onAuthComplete(BTAuthCompleteCallback);
-	SerialBT.begin(btName.c_str()); //Bluetooth device name
-
 	//читаем режим авторизации из памяти
 	AuthEnabled = preferences.getBool(EEPROM_AUTH, false);
 
@@ -254,7 +306,7 @@ void setup()
 		logError(F("Auth pack invalid"));
 	}
 
-	const uint32_t flashSize = FFat.freeBytes();
+	const uint32_t flashSize = FFat.totalBytes();
 	maxTeamNumber = (flashSize / teamFlashSize) - 1;
 	totalChipsChecked = refreshChipCounter();
 	batteryLevel = getBatteryLevel();
@@ -266,60 +318,19 @@ void setup()
 	lastExternalClock = systemTime.unixtime;
 	nextClockCheck = currentMillis + 10000;
 
+	lastTeamFlag = 0;
+	clearNewMask();
+
+
 	beep(1, 800);
-}
-
-void loop()
-{
-	//если режим КП то отметить чип автоматом
-	if (stationMode != MODE_INIT && millis() >= rfidReadStartTime)
-	{
-		processRfidCard();
-		rfidReadStartTime = millis() + RFID_READ_PERIOD;
-	}
-
-	// check UART for data
-	if (Serial.available())
-	{
-		logDebug(F("UART data available"));
-		uartReady = readUart(Serial);
-	}
-
-	// check Bluetooth for data
-	if (SerialBT.available())
-	{
-		logDebug(F("Bluetooth data available"));
-		uartReady = readUart(SerialBT);
-	}
-
-	//обработать пришедшую команду
-	if (uartReady)
-	{
-		uartReady = false;
-		executeCommand();
-	}
-
-	// check receive timeout
-	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)
-	{
-		logError(F("Receive timeout"));
-		uartBufferPosition = 0;
-		uartReady = false;
-		receivingData = false;
-		//errorBeepMs(1, 50);
-		addLastError(UART_TIMEOUT);
-	}
-
-	checkBatteryLevel();
-	checkClockIsRunning();
 }
 
 bool RfidStart()
 {
 	bool result = false;
 #if defined(USE_PN532)
-	uint8_t uid[8] = { 0 };	// Buffer to store the returned UID
-	uint8_t uidLength;		// Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+	uint8_t uid[8] = { 0 };    // Buffer to store the returned UID
+	uint8_t uidLength;    	// Length of the UID (4 or 7 bytes depending on ISO14443A card type)
 	result = pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
 	if (result) {
 		logDebug(F("RFID chip is found. UID uidLength:"), uidLength);
@@ -1005,7 +1016,7 @@ void resetStation() {
 	if (!addData(OK)) return;
 	sendData();
 	delay(100);
-	ESP.restart();
+	setupVars();
 }
 
 // выдает статус: время на станции, номер станции, номер режима, число отметок, время последней страницы
@@ -1590,16 +1601,16 @@ void readFlash() {
 
 	// 4-5: Number of bytes to read
 	uint16_t length = readUInt16(uartBuffer + DATA_START_BYTE + 4);
-	
+
 	// SM is hardcoded to maximum of 60 * 4 = 240 bytes
 	// getTeamRecord provides up to 255 records * 4 = 1020 bytes
 	if (length > static_cast<uint16_t>(MAX_PAKET_LENGTH)) {
 		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
-	
+
 	logDebug(F("Flash read"), startAddress, F("/"), length);
-	
+
 	init_package(REPLY_READ_FLASH);
 
 	// 0: код ошибки
@@ -1831,7 +1842,7 @@ void setChipType() {
 // сохранить размер блока команды
 void setTeamFlashSize() {
 	// 0-1: размер блока
-	uint16_t n = readUInt16(uartBuffer + DATA_START_BYTE); 
+	uint16_t n = readUInt16(uartBuffer + DATA_START_BYTE);
 	if (n < 16) {
 		logError(F("Wrong team flash size"), n);
 		sendError(WRONG_SIZE, REPLY_SET_TEAM_FLASH_SIZE);
@@ -2324,7 +2335,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 				uint8_t size = buffer_size;
 				status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Read(pageAdr, buffer, &size)));
 			#endif
-			
+
 			++n;
 			yield();
 		}
@@ -2370,7 +2381,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 #endif
 		if (!status)
 		{
-			logError(F("Card read failed"));	
+			logError(F("Card read failed"));
 			RfidStart();
 			logDebug(F("Chip re-initialized"));
 		}
