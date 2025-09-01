@@ -12,6 +12,7 @@
 #include "settings.h"
 #include "protocol_definitions.h"
 #include "preferences_definitions.h"
+#include "basic_helpers.h"
 #include "debug_helpers.h"
 
 #if defined(USE_PN532)
@@ -102,7 +103,7 @@ void setup()
 #if defined(USE_PN532)
 	if (!pn532.begin())
 	{
-		debugError(F("PN532 initialization failed"));
+		logError(F("PN532 initialization failed"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_RFID);
 	}
@@ -112,7 +113,7 @@ void setup()
 	byte s = mfrc522.PCD_ReadRegister(MFRC522::PCD_Register::VersionReg);
 	if (s == 0 || s == 0xff)
 	{
-		debugError(F("MFRC522 initialization failed"));
+		logError(F("MFRC522 initialization failed"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_RFID);
 	}
@@ -121,14 +122,14 @@ void setup()
 
 	if (!FFat.begin())
 	{
-		debugError(F("FFat failed, formatting..."));
+		logError(F("FFat failed, formatting..."));
 		bool result = FFat.format();
 		if (!result || !FFat.begin())
 		{
 			if (!result)
-				debugError(F("FFat format failed"));
+				logError(F("FFat format failed"));
 			else
-				debugError(F("FFat failed after format"));
+				logError(F("FFat failed after format"));
 			errorBeepMs(4, 200);
 			addLastError(STARTUP_FFAT);
 		}
@@ -137,7 +138,7 @@ void setup()
 	// read settings
 	if (!preferences.begin(PREFERENCE_NAME, false))
 	{
-		debugError(F("Preferences mount failed"));
+		logError(F("Preferences mount failed"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_SETTINGS);
 	}
@@ -147,7 +148,7 @@ void setup()
 	if (c == 0xff)
 	{
 		stationNumber = 0;
-		debugError(F("Station number not set"));
+		logError(F("Station number not set"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_NUMBER);
 	}
@@ -164,7 +165,7 @@ void setup()
 	else
 	{
 		stationMode = MODE_INIT;
-		debugError(F("Station mode invalid"));
+		logError(F("Station mode invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_MODE);
 	}
@@ -174,7 +175,7 @@ void setup()
 	if (voltageCoeff <= 0)
 	{
 		voltageCoeff = 0.0011;
-		debugError(F("Station voltage coefficient invalid"));
+		logError(F("Station voltage coefficient invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_GAIN); //STARTUP: incorrect gain in EEPROM
 	}
@@ -186,7 +187,7 @@ void setup()
 	else
 	{
 		gainCoeff = 96;
-		debugError(F("Station antenna gain invalid"));
+		logError(F("Station antenna gain invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_GAIN); //STARTUP: incorrect gain in EEPROM
 	}
@@ -198,7 +199,7 @@ void setup()
 	else
 	{
 		selectChipType(NTAG215_ID);
-		debugError(F("Station chip type invalid"));
+		logError(F("Station chip type invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_CHIP_TYPE);
 	}
@@ -208,7 +209,7 @@ void setup()
 	if (teamFlashSize == 0)
 	{
 		teamFlashSize = 1024;
-		debugError(F("Station team size invalid"));
+		logError(F("Station team size invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_TEAM_SIZE);
 	}
@@ -218,7 +219,7 @@ void setup()
 	if (batteryLimit < 0)
 	{
 		batteryLimit = 0;
-		debugError(F("Station battery limit invalid"));
+		logError(F("Station battery limit invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_BATTERY_LIMIT);
 	}
@@ -234,7 +235,7 @@ void setup()
 	else
 	{
 		scanAutoreport = false;
-		debugError(F("Station auto report setting invalid"));
+		logError(F("Station auto report setting invalid"));
 		errorBeepMs(4, 200);
 		addLastError(STARTUP_AUTOREPORT);
 	}
@@ -243,7 +244,7 @@ void setup()
 	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
 	if (!btName || btName.length() <= 0)
 	{
-		debugError(F("Bluetooth name not set"));
+		logError(F("Bluetooth name not set"));
 		btName = String("SportStation-") + String(stationNumber);
 	}
 
@@ -260,7 +261,7 @@ void setup()
 	if (c != 4)
 	{
 		AuthEnabled = false;
-		debugError(F("Auth password invalid"));
+		logError(F("Auth password invalid"));
 	}
 
 	//читаем ответ авторизации RFID из памяти
@@ -268,7 +269,7 @@ void setup()
 	if (c != 2)
 	{
 		AuthEnabled = false;
-		debugError(F("Auth pack invalid"));
+		logError(F("Auth pack invalid"));
 	}
 
 	const uint32_t flashSize = FFat.freeBytes();
@@ -298,14 +299,14 @@ void loop()
 	// check UART for data
 	if (Serial.available())
 	{
-		debugLog(F("UART data available"));
+		logDebug(F("UART data available"));
 		uartReady = readUart(Serial);
 	}
 
 	// check Bluetooth for data
 	if (SerialBT.available())
 	{
-		debugLog(F("Bluetooth data available"));
+		logDebug(F("Bluetooth data available"));
 		uartReady = readUart(SerialBT);
 	}
 
@@ -319,7 +320,7 @@ void loop()
 	// check receive timeout
 	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)
 	{
-		debugError(F("Receive timeout"));
+		logError(F("Receive timeout"));
 		uartBufferPosition = 0;
 		uartReady = false;
 		receivingData = false;
@@ -356,21 +357,21 @@ bool RfidStart()
 	result = mfrc522.PICC_IsNewCardPresent();
 	if (!result)
 	{
-		debugLog(F("RFID chip not found"));
+		logDebug(F("RFID chip not found"));
 		return result;
 	}
-	debugLog(F("RFID chip found"));
+	logDebug(F("RFID chip found"));
 
 	// Select one of the cards
 	result = mfrc522.PICC_ReadCardSerial();
 	if (!result)
 	{
-		debugError(F("RFID fail to select chip"));
+		logError(F("RFID fail to select chip"));
 		return result;
 	}
 	else
 	{
-		debugLog(F("RFID chip selected"));
+		logDebug(F("RFID chip selected"));
 	}
 #endif
 
@@ -406,13 +407,13 @@ void processRfidCard()
 	DS3231_get(&systemTime);
 
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
-	debugLog(F("Searching for RFID chip"));
+	logDebug(F("Searching for RFID chip"));
 
 	if (!RfidStart())
 	{
 		RfidEnd();
 		lastTeamFlag = 0;
-		debugError(F("Fail to find RFID chip"));
+		logError(F("Fail to find RFID chip"));
 		return;
 	}
 
@@ -420,19 +421,19 @@ void processRfidCard()
 	if (!ntagRead4pages(PAGE_CHIP_SYS2))
 	{
 		RfidEnd();
-		debugError(F("Failed to read RFID chip"));
+		logError(F("Failed to read RFID chip"));
 		//errorBeep(1);
 		addLastError(PROCESS_READ_CHIP);
 		return;
 	}
 
-	debugLog(F("Reading RFID chip"));
+	logDebug(F("Reading RFID chip"));
 
 	//неправильный тип чипа
 	if (ntag_page[2] != chipType)
 	{
 		RfidEnd();
-		debugError(F("Incorrect hardware RFID chip type"));
+		logError(F("Incorrect hardware RFID chip type"));
 		errorBeep(1);
 		addLastError(PROCESS_HW_CHIP_TYPE);
 		return;
@@ -450,9 +451,9 @@ void processRfidCard()
 	if (ntag_page[7] != FW_VERSION)
 	{
 		RfidEnd();
-		debugError(F("Incorrect firmware version"));
-		debugLog(F("Expected version: %d"), FW_VERSION);
-		debugLog(F("Actual version: %d"), ntag_page[7]);
+		logError(F("Incorrect firmware version"));
+		logDebug(F("Expected version: %d"), FW_VERSION);
+		logDebug(F("Actual version: %d"), ntag_page[7]);
 		errorBeep(4);
 		addLastError(PROCESS_FW_VERSION);
 		return;
@@ -469,7 +470,7 @@ void processRfidCard()
 	if ((systemTime.unixtime - initTime) > maxTimeInit)
 	{
 		RfidEnd();
-		debugError(F("Outdated RFID chip"));
+		logError(F("Outdated RFID chip"));
 		errorBeep(4);
 		addLastError(PROCESS_INIT_TIME); //CARD PROCESSING: chip init time is due
 		return;
@@ -480,8 +481,8 @@ void processRfidCard()
 	if (teamNumber < 1 || teamNumber > maxTeamNumber)
 	{
 		RfidEnd();
-		debugError(F("Incorrect chip number"));
-		debugLog(F("Chip number: %d"), teamNumber);
+		logError(F("Incorrect chip number"));
+		logDebug(F("Chip number: %d"), teamNumber);
 		errorBeep(4);
 		addLastError(PROCESS_CHIP_NUMBER);
 		return;
@@ -499,7 +500,7 @@ void processRfidCard()
 		&& ntag_page[10] == newTeamMask[4]
 		&& ntag_page[11] == newTeamMask[5])
 	{
-		debugLog(F("Updating mask"));
+		logDebug(F("Updating mask"));
 
 		if (ntag_page[12] != newTeamMask[6] || ntag_page[13] != newTeamMask[7])
 		{
@@ -508,7 +509,7 @@ void processRfidCard()
 			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
 			{
 				RfidEnd();
-				debugError(F("Failed to write mask"));
+				logError(F("Failed to write mask"));
 				digitalWrite(GREEN_LED_PIN, LOW);
 				errorBeep(1);
 				addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing to chip
@@ -520,7 +521,7 @@ void processRfidCard()
 		clearNewMask();
 		lastTeamFlag = teamNumber;
 		digitalWrite(GREEN_LED_PIN, LOW);
-		debugLog(F("Mask is updated"));
+		logDebug(F("Mask is updated"));
 		return;
 	}
 
@@ -529,7 +530,7 @@ void processRfidCard()
 	// Если это повторная отметка
 	if (teamNumber == lastTeamFlag)
 	{
-		debugLog(F("Same chip attached"));
+		logDebug(F("Same chip attached"));
 		RfidEnd();
 		return;
 	}
@@ -543,7 +544,7 @@ void processRfidCard()
 			if (lastTeams[i] == ntag_page[0] && lastTeams[i + 1] == ntag_page[1])
 			{
 				already_checked = true;
-				debugLog(F("Chip already checked"));
+				logDebug(F("Chip already checked"));
 				break;
 			}
 		}
@@ -553,13 +554,13 @@ void processRfidCard()
 	if (!already_checked && checkTeamExists(teamNumber))
 	{
 		already_checked = true;
-		debugLog(F("Chip already checked on flash"));
+		logDebug(F("Chip already checked on flash"));
 	}
 
 	// если известный чип и стартовый КП
 	if (already_checked && stationMode == MODE_START_KP)
 	{
-		debugError(F("Chip already checked on start KP"));
+		logError(F("Chip already checked on start KP"));
 		RfidEnd();
 		//digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(1);
@@ -578,7 +579,7 @@ void processRfidCard()
 		//digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(1);
 		addLastError(PROCESS_READ_CHIP);
-		debugError(F("Can't read chip"));
+		logError(F("Can't read chip"));
 		return;
 	}
 
@@ -590,21 +591,21 @@ void processRfidCard()
 		errorBeep(4);
 		addLastError(PROCESS_FIND_FREE_PAGE);
 
-		debugError(F("Incorrect chip page number"));
-		debugLog(F("Chip page number: %d"), newPage);
+		logError(F("Incorrect chip page number"));
+		logDebug(F("Chip page number: %d"), newPage);
 		return;
 	}
 
 	// chip was checked by another station with the same number
 	if (newPage == -1)
 	{
-		debugError(F("Chip marked by another station"));
+		logError(F("Chip marked by another station"));
 		lastTeamFlag = teamNumber;
 		//digitalWrite(GREEN_LED_PIN, LOW);
 		return;
 	}
 
-	debugLog(F("Writing to chip"));
+	logDebug(F("Writing to chip"));
 
 	// Пишем на чип отметку
 	digitalWrite(GREEN_LED_PIN, HIGH);
@@ -614,7 +615,7 @@ void processRfidCard()
 		digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(1);
 		addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing chip
-		debugError(F("Failed to write chip"));
+		logError(F("Failed to write chip"));
 		return;
 	}
 	// Пишем дамп чипа во флэш
@@ -624,7 +625,7 @@ void processRfidCard()
 		digitalWrite(GREEN_LED_PIN, LOW);
 		errorBeep(2);
 		addLastError(PROCESS_SAVE_DUMP); //CARD PROCESSING: error saving dump
-		debugError(F("Failed to write dump"));
+		logError(F("Failed to write dump"));
 		return;
 	}
 
@@ -637,8 +638,8 @@ void processRfidCard()
 	lastTimeChecked = systemTime.unixtime;
 	lastTeamFlag = teamNumber;
 
-	debugLog(F("New record"));
-	debugLog(F("Team number: %d"), teamNumber);
+	logDebug(F("New record"));
+	logDebug(F("Team number: %d"), teamNumber);
 
 #ifdef BENCHMARK
 	const unsigned long result = millis() - startCheck;
@@ -651,8 +652,8 @@ void processRfidCard()
 		//autoreport new command
 		if (/*digitalRead(BT_CONNECTED) || */Serial)
 		{
-			debugLog(F("Autoreport team"));
-			debugLog(F("Team number: %d"), teamNumber);
+			logDebug(F("Autoreport team"));
+			logDebug(F("Team number: %d"), teamNumber);
 
 			if (readTeamFromFlash(teamNumber))
 			{
@@ -686,7 +687,7 @@ bool readUart(Stream& SerialPort)
 
 		if (c == -1) // can't read stream
 		{
-			debugError(F("UART read error"));
+			logError(F("UART read error"));
 			uartBufferPosition = 0;
 			receivingData = false;
 			return false;
@@ -695,7 +696,7 @@ bool readUart(Stream& SerialPort)
 		// 0 byte = FE
 		if (uartBufferPosition == HEADER_BYTE && c == 0xfe)
 		{
-			debugLogHex(F("Byte 0"), c);
+			logDebugHex(F("Byte 0"), c);
 			receivingData = true;
 			uartBuffer[uartBufferPosition] = uint8_t(c);
 			uartBufferPosition++;
@@ -706,13 +707,13 @@ bool readUart(Stream& SerialPort)
 		else if (receivingData)
 		{
 			uartBuffer[uartBufferPosition] = uint8_t(c);
-			debugLogHex(F("Byte 1"), c);
+			logDebugHex(F("Byte 1"), c);
 			// incorrect length
 			if (uartBufferPosition == DATA_LENGTH_LOW_BYTE
 				&& uint32_t(
 					uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE])) > uint16_t(uint16_t(MAX_PAKET_LENGTH) - uint16_t(DATA_START_BYTE)))
 			{
-				debugError(F("Incorrect length"));
+				logError(F("Incorrect length"));
 
 				uartBufferPosition = 0;
 				receivingData = false;
@@ -726,7 +727,7 @@ bool readUart(Stream& SerialPort)
 			if (uartBufferPosition > DATA_LENGTH_LOW_BYTE && uartBufferPosition >= uint32_t(uint32_t(DATA_START_BYTE) + uint32_t(uint32_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint32_t(256) + uint32_t(uartBuffer[DATA_LENGTH_LOW_BYTE]))))
 			{
 				// crc matching
-				debugLogHex(F("Expected CRC"), crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1));
+				logDebugHex(F("Expected CRC"), crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1));
 				if (uartBuffer[uartBufferPosition] == crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1))
 				{
 					// incorrect station number
@@ -734,7 +735,7 @@ bool readUart(Stream& SerialPort)
 						&& uartBuffer[COMMAND_BYTE] != COMMAND_GET_STATUS
 						&& uartBuffer[COMMAND_BYTE] != COMMAND_GET_CONFIG)
 					{
-						debugError(F("Incorrect station number"));
+						logError(F("Incorrect station number"));
 						uartBufferPosition = 0;
 						receivingData = false;
 						errorBeepMs(3, 50);
@@ -743,14 +744,14 @@ bool readUart(Stream& SerialPort)
 						return false;
 					}
 
-					debugLogHexArray(F("Command received"), uartBuffer, uartBufferPosition + 1);
+					logDebugHexArray(F("Command received"), uartBuffer, uartBufferPosition + 1);
 					uartBufferPosition = 0;
 					receivingData = false;
 					return true;
 				}
 				else // CRC not correct
 				{
-					debugError(F("Incorrect CRC"));
+					logError(F("Incorrect CRC"));
 					uartBufferPosition = 0;
 					receivingData = false;
 					errorBeepMs(3, 50);
@@ -762,7 +763,7 @@ bool readUart(Stream& SerialPort)
 		}
 		else
 		{
-			debugError(F("Unexpected byte"));
+			logError(F("Unexpected byte"));
 			receivingData = false;
 			uartBufferPosition = 0;
 			addLastError(UART_UNEXPECTED_BYTE);
@@ -777,7 +778,7 @@ bool readUart(Stream& SerialPort)
 
 // поиск функции
 void executeCommand() {
-	debugLogHex(F("Command"), uartBuffer[COMMAND_BYTE]);
+	logDebugHex(F("Command"), uartBuffer[COMMAND_BYTE]);
 	bool errorLengthFlag = false;
 	uint16_t data_length = uint16_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE]));
 	switch (uartBuffer[COMMAND_BYTE])
@@ -906,7 +907,7 @@ void executeCommand() {
 	uartBufferPosition = 0;
 	if (errorLengthFlag)
 	{
-		debugError(F("Incorrect data length"));
+		logError(F("Incorrect data length"));
 		sendError(WRONG_PACKET_LENGTH, uartBuffer[COMMAND_BYTE] + 0x10);
 	}
 }
@@ -931,7 +932,7 @@ void setMode()
 // обновление времени на станции
 void setTime()
 {
-	debugLogDateTime(uartBuffer + DATA_START_BYTE);
+	logDebugDateTime(uartBuffer + DATA_START_BYTE);
 
 	// 0-3: дата и время в unixtime
 
@@ -1435,7 +1436,7 @@ void updateTeamMask()
 	if (ntag_page[14] != chipType)
 	{
 		RfidEnd();
-		debugError(F("Incorrect chip type"));
+		logError(F("Incorrect chip type"));
 		sendError(WRONG_CHIP_TYPE, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1461,7 +1462,7 @@ void updateTeamMask()
 	/*if (ntag_page[2] != NTAG_MARK)
 	{
 		RfidEnd();
-		debugError(F("Incorrect chip"));
+		logError(F("Incorrect chip"));
 		sendError(WRONG_CHIP_TYPE, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}*/
@@ -1470,7 +1471,7 @@ void updateTeamMask()
 	if (ntag_page[3] != FW_VERSION)
 	{
 		RfidEnd();
-		debugError(F("Incorrect chip firmware"));
+		logError(F("Incorrect chip firmware"));
 		sendError(WRONG_FW_VERSION, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1486,7 +1487,7 @@ void updateTeamMask()
 	if ((systemTime.unixtime - timeInit) > maxTimeInit)
 	{
 		RfidEnd();
-		debugError(F("Outdated chip"));
+		logError(F("Outdated chip"));
 		sendError(LOW_INIT_TIME, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1497,8 +1498,8 @@ void updateTeamMask()
 	if (chipNum < 1 || chipNum > maxTeamNumber)
 	{
 		RfidEnd();
-		debugError(F("Incorrect chip number"));
-		debugLog(F("Chip number"), chipNum);
+		logError(F("Incorrect chip number"));
+		logDebug(F("Chip number"), chipNum);
 		sendError(WRONG_TEAM, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1517,7 +1518,7 @@ void updateTeamMask()
 	{
 		if (ntag_page[8] != newTeamMask[6] || ntag_page[9] != newTeamMask[7])
 		{
-			debugLog(F("Updating mask"));
+			logDebug(F("Updating mask"));
 			digitalWrite(GREEN_LED_PIN, HIGH);
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[10], ntag_page[11] };
 			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
@@ -1610,86 +1611,68 @@ void writeCardPage()
 	sendData();
 }
 
-// читаем флэш
-void readFlash()
-{
-	// 0-3: адрес начала чтения
-	uint32_t startAddress = uartBuffer[DATA_START_BYTE];
-	startAddress <<= 8;
-	startAddress += uartBuffer[DATA_START_BYTE + 1];
-	startAddress <<= 8;
-	startAddress += uartBuffer[DATA_START_BYTE + 2];
-	startAddress <<= 8;
-	startAddress += uartBuffer[DATA_START_BYTE + 3];
+void readFlash() {
+	// 0-3: start address for reading
+	uint32_t startAddress = readUInt32(uartBuffer + DATA_START_BYTE);
 
-	// 4-5: размер блока
-	uint32_t length = uint32_t(uint32_t(uint32_t(uartBuffer[DATA_START_BYTE + 4]) * uint32_t(256))
-		+ uint32_t(uartBuffer[DATA_START_BYTE + 5]));
-
-	if (length > uint32_t(uint32_t(MAX_PAKET_LENGTH) - 7 - uint32_t(DATA_LENGTH_READ_FLASH) - 1))
-	{
+	// 4-5: Number of bytes to read
+	uint16_t length = readUInt16(uartBuffer + DATA_START_BYTE + 4);
+	
+	// SM is hardcoded to maximum of 60 * 4 = 240 bytes
+	// getTeamRecord provides up to 255 records * 4 = 1020 bytes
+	if (length > static_cast<uint16_t>(MAX_PAKET_LENGTH)) {
 		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
-
-	debugLog(F("Flash read"), startAddress, F("/"), length);
-
+	
+	logDebug(F("Flash read"), startAddress, F("/"), length);
+	
 	init_package(REPLY_READ_FLASH);
 
 	// 0: код ошибки
 	// 1-4: адрес начала чтения
 	// 5-n: данные из флэша
-	if (!addData(OK))
-		return;
-
-	debugLog(F("OK"), uartBufferPosition);
-
 	bool flag = true;
+	flag &= addData(OK);
 	flag &= addData((startAddress & 0xFF000000) >> 24);
 	flag &= addData((startAddress & 0x00FF0000) >> 16);
 	flag &= addData((startAddress & 0x0000FF00) >> 8);
 	flag &= addData(startAddress & 0x000000FF);
-	if (!flag)
-	{
+	if (!flag) {
 		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
 
-	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
-	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
-	
+	uint16_t teamNumber = startAddress / teamFlashSize;
+	uint32_t teamStartAddress = startAddress % teamFlashSize;
+
 	const String teamFile = teamFilePrefix + String(teamNumber);
+	logDebug(F("Team number"), teamNumber);
+	logDebug(F("Start address"), teamStartAddress);
+	logDebug(F("Team file"), teamFile);
 
-	debugLog(F("Team number"), teamNumber);
-	debugLog(F("Start address"), startAddress);
-	debugLog(F("Team file"), teamFile);
-
-	#ifdef DEBUG
-		listDir("/", 1);
-		if (FFat.exists(teamFile.c_str())) {
-			debugLog(F("File exists"));
-		} else {
-			debugLog(F("File does not exist"));
-		}
-	#endif
-	File file = FFat.open(teamFile, FILE_READ);
-	if (!file)
-	{
-		debugError(F("Failed to open file"));
+	if (!FFat.exists(teamFile.c_str())) {
+		logError(F("Team file does not exist"), teamFile);
 		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
 	}
 
-	file.seek(startAddress);
-	for (; length > 0; length--)
-	{
-		if (!addData(file.read()))
-		{
-			debugError(F("Failed to add data"));
+	File file = FFat.open(teamFile, FILE_READ);
+	if (!file) {
+		logError(F("Failed to open file"));
+		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
+		return;
+	}
+
+	file.seek(teamStartAddress);
+	while (length > 0 && file.available() > 0) {
+		if (!addData(file.read())) {
+			logError(F("Failed to add data"));
 			sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 			return;
 		}
 
+		--length;
 		yield();
 	}
 
@@ -1698,30 +1681,23 @@ void readFlash()
 }
 
 // пишем в флэш
-void writeFlash()
-{
+void writeFlash() {
+	uint16_t length = readUInt16(uartBuffer + DATA_LENGTH_HIGH_BYTE);
+
 	// 0-3: адрес начала записи
 	// 4-n: данные
-	uint32_t startAddress = uartBuffer[DATA_START_BYTE];
-	startAddress <<= 8;
-	startAddress += uartBuffer[DATA_START_BYTE + 1];
-	startAddress <<= 8;
-	startAddress += uartBuffer[DATA_START_BYTE + 2];
-	startAddress <<= 8;
-	startAddress += uartBuffer[DATA_START_BYTE + 3];
-
-	uint16_t length = uint16_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE])) - 4;
+	uint32_t startAddress = readUInt32(uartBuffer + DATA_START_BYTE);
 
 	init_package(REPLY_WRITE_FLASH);
 
 	uint16_t teamNumber = (uint16_t)(startAddress / teamFlashSize);
 	startAddress -= (uint32_t)teamNumber * (uint32_t)teamFlashSize;
+
 	const String teamFile = teamFilePrefix + String(teamNumber);
 	File file = FFat.open(teamFile, FILE_WRITE);
-	if (!file
-		|| !file.seek(startAddress)
-		|| length != file.write(reinterpret_cast<uint8_t*>(uartBuffer[DATA_START_BYTE + 4]), length))
-	{
+	if (!file || !file.seek(startAddress) || length != file.write(reinterpret_cast<uint8_t*>(uartBuffer[DATA_START_BYTE + 4]), length)) {
+		file.close();
+		logError(F("Failed to write to flash"));
 		sendError(FLASH_WRITE_ERROR, REPLY_WRITE_FLASH);
 		return;
 	}
@@ -1730,14 +1706,15 @@ void writeFlash()
 
 	// 0: код ошибки
 	// 1-2: кол-во записанных байт (для проверки)
-	if (!addData(OK))
+	bool flag = true;
+	flag &= addData(OK);
+	flag &= addData(length >> 8);
+	flag &= addData(length & 0x00ff);
+	if (!flag) {
+		logError(F("Failed to add data"));
+		sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
 		return;
-
-	if (!addData(length >> 8))
-		return;
-
-	if (!addData(length & 0x00ff))
-		return;
+	}
 
 	sendData();
 }
@@ -1749,7 +1726,7 @@ void eraseTeamFlash()
 	teamNumber <<= 8;
 	teamNumber += uartBuffer[DATA_START_BYTE + 1];
 
-	debugLog(F("Erasing team"), teamNumber);
+	logDebug(F("Erasing team"), teamNumber);
 
 	if (!eraseTeamFromFlash(teamNumber))
 	{
@@ -1902,7 +1879,7 @@ void setTeamFlashSize()
 // обработать запрос на подтверждение BT подключения
 void BTConfirmRequestCallback(uint32_t numVal)
 {
-	debugLog(F("The PIN is"), numVal);
+	logDebug(F("The PIN is"), numVal);
 
 	bool confirmedByButton = !digitalRead(0);
 	if (confirmedByButton)
@@ -1910,13 +1887,13 @@ void BTConfirmRequestCallback(uint32_t numVal)
 	else
 		SerialBT.confirmReply(false);
 
-	debugLog(F("Confirmation"), confirmedByButton);
+	logDebug(F("Confirmation"), confirmedByButton);
 }
 
 // поменять имя BT адаптера
 void setBtName()
 {
-	debugLog(F("Set new BT name"));
+	logDebug(F("Set new BT name"));
 	uint16_t data_length = uint16_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE]));
 	if (data_length < 1 || data_length>32)
 	{
@@ -1938,7 +1915,7 @@ void setBtName()
 
 void BTAuthCompleteCallback(boolean success)
 {
-	debugLog(F("Pairing"), success);
+	logDebug(F("Pairing"), success);
 }
 
 // установить лимит срабатывания сигнала о разряде батареи
@@ -1969,16 +1946,16 @@ void setBatteryLimit()
 // получить список команд на флэше
 void scanTeams()
 {
-	debugLog(F("Scan teams in flash"));
+	logDebug(F("Scan teams in flash"));
 
 	// 0-1: номер команды
 	uint16_t startNumber = uint16_t(uint16_t(uartBuffer[DATA_START_BYTE] * 256) + uartBuffer[DATA_START_BYTE + 1]);
 
-	debugLog(F("Start from team"), startNumber);
+	logDebug(F("Start from team"), startNumber);
 
 	if (startNumber < 1 || startNumber > maxTeamNumber)
 	{
-		debugError(F("Wrong team number"), startNumber);
+		logError(F("Wrong team number"), startNumber);
 		sendError(WRONG_DATA, REPLY_SCAN_TEAMS);
 		return;
 	}
@@ -1991,11 +1968,11 @@ void scanTeams()
 	//uint8_t data[2];
 	for (; startNumber <= maxTeamNumber; startNumber++)
 	{
-		debugLog(F("Trying team"), startNumber);
+		logDebug(F("Trying team"), startNumber);
 
 		if (checkTeamExists(startNumber))
 		{
-			debugLog(F("Found team"), startNumber);
+			logDebug(F("Found team"), startNumber);
 
 			if (!addData((startNumber & 0xFF00) >> 8)) return;
 			if (!addData(startNumber & 0x00FF)) return;
@@ -2161,7 +2138,7 @@ void saveNewMask()
 	{
 		newTeamMask[i] = uartBuffer[DATA_START_BYTE + i];
 	}
-	debugLogHexArray(F("New mask"), newTeamMask, 8);
+	logDebugHexArray(F("New mask"), newTeamMask, 8);
 }
 
 // очистить буфер смены маски
@@ -2170,7 +2147,7 @@ void clearNewMask()
 	for (uint8_t i = 0; i < 8; i++)
 		newTeamMask[i] = 0;
 
-	debugLog(F("Mask cleared"));
+	logDebug(F("Mask cleared"));
 }
 
 // ToDo: переделать для ESP32
@@ -2252,11 +2229,11 @@ void init_package(uint8_t command)
 // добавление данных в буфер
 bool addData(uint8_t data)
 {
-	debugLogHex(F("Adding to buffer"), data);
+	logDebugHex(F("Adding to buffer"), data);
 
 	if (uartBufferPosition >= uint16_t(MAX_PAKET_LENGTH - 1))
 	{
-		debugError(F("Adding to buffer failed"));
+		logError(F("Adding to buffer failed"));
 
 		sendError(BUFFER_OVERFLOW);
 		return false;
@@ -2276,8 +2253,8 @@ void sendData()
 	uartBuffer[uartBufferPosition] = crcCalc(uartBuffer, PACKET_ID_BYTE, uartBufferPosition - 1);
 	uartBufferPosition++;
 
-	debugLog(F("Sending data"));
-	debugLogHexArray(F("Data"), uartBuffer, uartBufferPosition);
+	logDebug(F("Sending data"));
+	logDebugHexArray(F("Data"), uartBuffer, uartBufferPosition);
 
 	Serial.write(uartBuffer, uartBufferPosition);
 	if (SerialBT.connected())
@@ -2288,14 +2265,14 @@ void sendData()
 
 bool ntagAuth(uint8_t* pass, uint8_t* pack, bool ignorePack)
 {
-	debugLog(F("Chip authentication"));
+	logDebug(F("Chip authentication"));
 	uint8_t n = 0;
 	bool status = 0;
 	uint8_t p_Ack[2] = { 0,0 };
 	while (!status && n < 3)
 	{
-		debugLogHexArray(F("PWD"), pass, 4);
-		debugLogHexArray(F("PACK"), pack, 2);
+		logDebugHexArray(F("PWD"), pass, 4);
+		logDebugHexArray(F("PACK"), pack, 2);
 
 #if defined(USE_PN532)
 		status = (1 == pn532.ntag2xx_Auth(pass, p_Ack));
@@ -2303,7 +2280,7 @@ bool ntagAuth(uint8_t* pass, uint8_t* pack, bool ignorePack)
 		status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.PCD_NTAG216_AUTH(pass, p_Ack)));
 #endif
 
-		debugLog(F("Status"), status);
+		logDebug(F("Status"), status);
 
 		if (status)
 		{
@@ -2324,7 +2301,7 @@ bool ntagAuth(uint8_t* pass, uint8_t* pack, bool ignorePack)
 
 	if (!status)
 	{
-		debugError(F("Failed to authenticate chip"));
+		logError(F("Failed to authenticate chip"));
 		return false;
 	}
 
@@ -2342,8 +2319,8 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 	bool status = false;
 	while (!status && n < 3)
 	{
-		debugLog(F("Writing RFID page"), pageAdr);
-		debugLogHexArray(F("Data"), data, 4);
+		logDebug(F("Writing RFID page"), pageAdr);
+		logDebugHexArray(F("Data"), data, 4);
 
 #if defined(USE_PN532)
 		status = pn532.ntag2xx_WritePage(pageAdr, data);
@@ -2351,7 +2328,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 		status = (MFRC522::STATUS_OK == MFRC522::StatusCode(mfrc522.MIFARE_Ultralight_Write(pageAdr, data, sizePageNtag)));
 #endif
 
-		debugLog(F("Status"), status);
+		logDebug(F("Status"), status);
 
 		n++;
 		if (!status)
@@ -2364,13 +2341,13 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 
 	if (!status)
 	{
-		debugError(F("Failed to write RFID page with status:"), status);
+		logError(F("Failed to write RFID page with status:"), status);
 		return false;
 	}
 
 	if (verify)
 	{
-		debugLog(F("Chip write verification started"));
+		logDebug(F("Chip write verification started"));
 		n = 0;
 		uint8_t const buffer_size = 18;
 		uint8_t buffer[buffer_size];
@@ -2389,17 +2366,17 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 
 		if (!status)
 		{
-			debugError(F("Chip read failed"));
+			logError(F("Chip read failed"));
 			return false;
 		}
 
 
 		for (uint8_t i = 0; i < 4; i++)
 		{
-			debugLog(F("Buffer"), buffer[i], F("?="), data[i]);
+			logDebug(F("Buffer"), buffer[i], F("?="), data[i]);
 			if (buffer[i] != data[i])
 			{
-				debugError(F("Failed to verify chip"));
+				logError(F("Failed to verify chip"));
 				return false;
 			}
 
@@ -2419,7 +2396,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 	bool status = false;
 	while (!status && n < 3)
 	{
-		debugLog(F("Card reading"));
+		logDebug(F("Card reading"));
 
 #if defined(USE_PN532)
 		status = pn532.ntag2xx_Read4Pages(pageAdr, buffer);
@@ -2428,9 +2405,9 @@ bool ntagRead4pages(uint8_t pageAdr)
 #endif
 		if (!status)
 		{
-			debugError(F("Card read failed"));	
+			logError(F("Card read failed"));	
 			RfidStart();
-			debugLog(F("Chip re-initialized"));
+			logDebug(F("Chip re-initialized"));
 		}
 
 		n++;
@@ -2439,7 +2416,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 
 	if (!status)
 	{
-		debugError(F("Card read failed"));
+		logError(F("Card read failed"));
 		return false;
 	}
 
@@ -2447,7 +2424,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 	{
 		ntag_page[i] = buffer[i];
 	}
-	debugLog(F("Card reading done"));
+	logDebug(F("Card reading done"));
 
 	return true;
 }
@@ -2586,7 +2563,7 @@ int findNewPage()
 	{
 		if (!ntagRead4pages(page))
 		{
-			debugError(F("Can't read chip"));
+			logError(F("Can't read chip"));
 			// chip read error
 			return 0;
 		}
@@ -2595,7 +2572,7 @@ int findNewPage()
 			// chip was checked by another station with the same number
 			if (stationMode == MODE_START_KP && ntag_page[n * 4] == stationNumber)
 			{
-				debugError(F("Chip checked already"));
+				logError(F("Chip checked already"));
 				return -1;
 			}
 
@@ -2627,24 +2604,24 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 	// адрес хранения в каталоге
 	String teamFile = teamFilePrefix + String(teamNumber);
 
-	debugLog(F("Write to flash address"), teamNumber);
+	logDebug(F("Write to flash address"), teamNumber);
 
 	if (checkTeamExists(teamNumber))
 	{
 		// если режим финишной станции, то надо переписать содержимое
 		if (stationMode == MODE_FINISH_KP)
 		{
-			debugLog(F("Erasing team"), teamNumber);
+			logDebug(F("Erasing team"), teamNumber);
 
 			if (!eraseTeamFromFlash(teamNumber))
 			{
-				debugError(F("Failed to erase team"));
+				logError(F("Failed to erase team"));
 				return false;
 			}
 		}
 		else
 		{
-			debugError(F("Team already saved"));
+			logError(F("Team already saved"));
 			return false;
 		}
 	}
@@ -2677,8 +2654,8 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 	File file = FFat.open(teamFile, FILE_WRITE, true);
 	if (!file)
 	{
-		debugError(F("Failed to open file"));
-		debugLog(F("Team file"), teamFile);
+		logError(F("Failed to open file"));
+		logDebug(F("Team file"), teamFile);
 		return false;
 	}
 
@@ -2686,44 +2663,38 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 	{
 		// append file to team_file_size
 		file.close();
-		debugError(F("Failed to write basics to file"));
+		logError(F("Failed to write basics to file"));
 		return false;
 	}
 
-	debugLog(F("Basics written"));
+	logDebug(F("Basics written"));
 
 	// copy card content to flash. все страницы не начинающиеся с 0
 	uint8_t checkCount = 0;
 	uint8_t block = 0;
 	bool endOrRecords = false;
-	while (block < tagMaxPage && !endOrRecords)
-	{
-		debugLog(F("Reading 4 pages from chip"), block);
+	while (block < tagMaxPage && !endOrRecords) {
+		logDebug(F("Reading 4 pages from chip"), block);
 
-		if (!ntagRead4pages(block))
-		{
+		if (!ntagRead4pages(block)) {
 			file.close();
-			debugError(F("Failed to read 4 pages from chip"));
+			logError(F("Failed to read 4 pages from chip"));
 			return false;
 		}
 
-		//4 pages in one read block
-		for (uint8_t i = 0; i < 4; i++)
-		{
-			if (block < 8 || ntag_page[i * 4]>0)
-			{
-				debugLogHexArray(F("Writing to flash"), ntag_page, 16);
-				if (!file.write(&ntag_page[0 + i * 4], 4))
-				{
+		// 4 pages in one read block
+		for (uint8_t i = 0; i < 4; ++i) {
+			if (block < PAGE_DATA_START || ntag_page[i * 4] > 0) {
+				logDebugHexArray(F("Writing to flash"), ntag_page, 16);
+				if (!file.write(&ntag_page[0 + i * 4], 4)) {
 					file.close();
 					return false;
 				}
 
-				checkCount++;
+				++checkCount;
 			}
-			else
-			{
-				debugLog(F("Chip last block"), block + i);
+			else {
+				logDebug(F("Chip last block"), block + i);
 				block = tagMaxPage;
 				endOrRecords = true;
 				break;
@@ -2735,10 +2706,9 @@ bool writeDumpToFlash(uint16_t teamNumber, uint32_t checkTime, uint32_t initTime
 	}
 
 	// add dump pages number
-	if (!file.seek(12) || !file.write(checkCount))
-	{
+	if (!file.seek(12) || !file.write(checkCount)) {
 		file.close();
-		debugError(F("Failed to write check count"));
+		logError(F("Failed to write check count"));
 		return false;
 	}
 
@@ -2773,7 +2743,7 @@ bool readTeamFromFlash(uint16_t teamNumber)
 // подсчет записанных в флэш отметок
 uint16_t refreshChipCounter()
 {
-	debugLog(F("Refreshing chip counter"));
+	logDebug(F("Refreshing chip counter"));
 	uint16_t chips = 0;
 	char data[12];
 	for (uint16_t i = 1; i <= maxTeamNumber; i++)
@@ -2801,14 +2771,14 @@ uint16_t refreshChipCounter()
 				lastTeams[1] = data[1];
 			}
 
-			debugLog(F("Checked chip"), i);
+			logDebug(F("Checked chip"), i);
 		}
 
 		file.close();
 		yield();
 	}
 
-	debugLog(F("Checked chip counter"), chips);
+	logDebug(F("Checked chip counter"), chips);
 	return chips;
 }
 

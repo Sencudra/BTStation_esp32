@@ -11,7 +11,7 @@ constexpr bool DEBUG_ENABLED =
 
 namespace {
 
-    inline void debugLogPrefix(const char* file, int line) {
+    inline void logDebugPrefix(const char* file, int line) {
         Serial.print(file);
         Serial.print(F(":"));
         Serial.print(line);
@@ -25,10 +25,10 @@ namespace {
 
 }
 
-#define DEBUG_PREFIX() debugLogPrefix(__FILE__, __LINE__)
+#define DEBUG_PREFIX() logDebugPrefix(__FILE__, __LINE__)
 
 template<typename First, typename... Rest>
-inline void debugLog(First&& first, Rest&&... rest) {
+inline void logDebug(First&& first, Rest&&... rest) {
     if constexpr (DEBUG_ENABLED) {
         DEBUG_PREFIX();
         Serial.print(std::forward<First>(first));
@@ -38,15 +38,15 @@ inline void debugLog(First&& first, Rest&&... rest) {
 }
 
 template<typename... Args>
-inline void debugError(Args&&... args) {
+inline void logError(Args&&... args) {
     if constexpr (DEBUG_ENABLED) {
-        debugLog(F("ERROR:"), std::forward<Args>(args)...);
+        logDebug(F("ERROR:"), std::forward<Args>(args)...);
     }
 }
 
 template<typename T>
-inline void debugLogHex(const __FlashStringHelper* label, T value) {
-    static_assert(std::is_integral_v<T>, "debugLogHex requires an integral type");
+inline void logDebugHex(const __FlashStringHelper* label, T value) {
+    static_assert(std::is_integral_v<T>, "logDebugHex requires an integral type");
 
     if constexpr (DEBUG_ENABLED) {
         DEBUG_PREFIX();
@@ -64,7 +64,7 @@ inline void debugLogHex(const __FlashStringHelper* label, T value) {
     }
 }
 
-inline void debugLogHexArray(const __FlashStringHelper* label, const uint8_t* data, size_t length) {
+inline void logDebugHexArray(const __FlashStringHelper* label, const uint8_t* data, size_t length) {
     if constexpr (DEBUG_ENABLED) {
         DEBUG_PREFIX();
         Serial.print(label);
@@ -78,7 +78,7 @@ inline void debugLogHexArray(const __FlashStringHelper* label, const uint8_t* da
     }
 }
 
-inline void debugLogDateTime(const uint8_t* buf) {
+inline void logDebugDateTime(const uint8_t* buf) {
     if constexpr (DEBUG_ENABLED) {
         DEBUG_PREFIX();
         Serial.print(F("Time: "));
