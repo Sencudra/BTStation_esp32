@@ -1,4 +1,5 @@
 #pragma once
+
 // страницы в чипе. 0-7 служебные, 8-... для отметок
 #define PAGE_UID1         0
 #define PAGE_UID2         1
