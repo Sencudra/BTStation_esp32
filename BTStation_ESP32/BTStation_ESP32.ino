@@ -665,8 +665,7 @@ void processRfidCard()
 				// 7-8: маска команды
 				// 9-12 : время последней отметки на станции
 				// 13: счетчик сохраненных страниц
-				for (uint8_t i = 0; i < 13; i++)
-				{
+				for (uint8_t i = 0; i < 13; ++i) {
 					if (!addData(ntag_page[i])) return;
 				}
 				sendData();
@@ -770,7 +769,7 @@ bool readUart(Stream& SerialPort) {
 void executeCommand() {
 	logDebugHex(F("Command"), uartBuffer[COMMAND_BYTE]);
 	bool errorLengthFlag = false;
-	uint16_t data_length = uint16_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE]));
+	uint16_t data_length = readUInt16(uartBuffer + DATA_LENGTH_HIGH_BYTE);
 	switch (uartBuffer[COMMAND_BYTE])
 	{
 	case COMMAND_SET_MODE:
@@ -1000,7 +999,7 @@ void resetStation()
 	{
 		String teamFile;
 		teamFile.reserve(teamFilePrefix.length() + 5);
-		for (int teamNumber = 0; teamNumber <= maxTeamNumber; teamNumber++)
+		for (int teamNumber = 0; teamNumber <= maxTeamNumber; ++teamNumber)
 		{
 			teamFile = teamFilePrefix + String(teamNumber);
 			if (FFat.exists(teamFile.c_str()))
@@ -1128,7 +1127,7 @@ void initChip()
 
 	// заполняем чип 0x00
 	uint8_t dataBlock[4] = { 0,0,0,0 };
-	for (uint8_t page = PAGE_CHIP_NUM; page < tagMaxPage; page++)
+	for (uint8_t page = PAGE_CHIP_NUM; page < tagMaxPage; ++page)
 	{
 		if (!ntagWritePage(dataBlock, page, true, false))
 		{
@@ -1213,7 +1212,7 @@ void initChip()
 	if (!flag) return;
 
 	// добавляем в ответ UID
-	for (uint8_t i = 0; i <= 7; i++)
+	for (uint8_t i = 0; i <= 7; ++i)
 	{
 		if (!addData(ntag_page[i])) return;
 	}
@@ -1229,7 +1228,7 @@ void getLastTeams()
 	if (!addData(OK)) return;
 
 	// номера последних команд
-	for (uint8_t i = 0; i < LAST_TEAMS_LENGTH * 2; i++)
+	for (uint8_t i = 0; i < LAST_TEAMS_LENGTH * 2; ++i)
 	{
 		//stop if command is empty
 		// if (lastTeams[i] + lastTeams[i + 1] == 0) break;
@@ -1238,7 +1237,7 @@ void getLastTeams()
 		if (!addData(lastTeams[i])) return;
 	}
 	sendData();
-	for (uint8_t i = 0; i < LAST_TEAMS_LENGTH * 2; i++) lastTeams[i] = 0;
+	for (uint8_t i = 0; i < LAST_TEAMS_LENGTH * 2; ++i) lastTeams[i] = 0;
 }
 
 // получаем запись о команде из флэша
@@ -1271,7 +1270,7 @@ void getTeamRecord()
 	// 7-8: маска команды
 	// 9-12 : время последней отметки на станции
 	// 13: счетчик сохраненных страниц
-	for (uint8_t i = 0; i < 13; i++)
+	for (uint8_t i = 0; i < 13; ++i)
 	{
 		if (!addData(ntag_page[i])) return;
 	}
@@ -1321,7 +1320,7 @@ void readCardPages()
 	}
 
 	// пишем UID в буфер ответа
-	for (uint8_t i = 0; i <= 7; i++)
+	for (uint8_t i = 0; i <= 7; ++i)
 	{
 		if (!addData(ntag_page[i]))
 		{
@@ -1351,9 +1350,9 @@ void readCardPages()
 		}
 		uint8_t n = (pageTo - pageFrom + 1);
 		if (n > 4) n = 4;
-		for (uint8_t i = 0; i < n; i++)
+		for (uint8_t i = 0; i < n; ++i)
 		{
-			for (uint8_t j = 0; j < 4; j++)
+			for (uint8_t j = 0; j < 4; ++j)
 			{
 				if (!addData(ntag_page[i * 4 + j]))
 				{
@@ -1556,7 +1555,7 @@ void writeCardPage()
 		return;
 	}
 	bool flag = false;
-	for (uint8_t i = 0; i <= 7; i++)
+	for (uint8_t i = 0; i <= 7; ++i)
 	{
 		if (uartBuffer[DATA_START_BYTE + i] != 0xff && ntag_page[i] != uartBuffer[DATA_START_BYTE + i])
 		{
@@ -1799,7 +1798,7 @@ void setVCoeff()
 		uint8_t byte[4];
 	} p;
 
-	for (uint8_t i = 0; i < 4; i++)
+	for (uint8_t i = 0; i < 4; ++i)
 	{
 		p.byte[i] = uartBuffer[DATA_START_BYTE + i];
 	}
@@ -1828,12 +1827,11 @@ void setGain()
 }
 
 // сохранить тип чипа
-void setChipType()
-{
+void setChipType() {
 	// 0: тип чипа
 	chipType = uartBuffer[DATA_START_BYTE];
-	if (!selectChipType(chipType))
-	{
+	if (!selectChipType(chipType)) {
+		logError(F("Wrong chip type"), chipType);
 		sendError(WRONG_CHIP_TYPE, REPLY_SET_CHIP_TYPE);
 		return;
 	}
@@ -1847,11 +1845,11 @@ void setChipType()
 }
 
 // сохранить размер блока команды
-void setTeamFlashSize()
-{
+void setTeamFlashSize() {
 	// 0-1: размер блока
 	uint16_t n = readUInt16(uartBuffer + DATA_START_BYTE); 
 	if (n < 16) {
+		logError(F("Wrong team flash size"), n);
 		sendError(WRONG_SIZE, REPLY_SET_TEAM_FLASH_SIZE);
 		return;
 	}
@@ -1866,34 +1864,29 @@ void setTeamFlashSize()
 }
 
 // обработать запрос на подтверждение BT подключения
-void BTConfirmRequestCallback(uint32_t numVal)
-{
+void BTConfirmRequestCallback(uint32_t numVal) {
 	logDebug(F("The PIN is"), numVal);
 
 	bool confirmedByButton = !digitalRead(0);
-	if (confirmedByButton)
-		SerialBT.confirmReply(true);
-	else
-		SerialBT.confirmReply(false);
+	SerialBT.confirmReply(confirmedByButton);
 
 	logDebug(F("Confirmation"), confirmedByButton);
 }
 
 // поменять имя BT адаптера
-void setBtName()
-{
+void setBtName() {
 	logDebug(F("Set new BT name"));
-	uint16_t data_length = uint16_t(uint16_t(uartBuffer[DATA_LENGTH_HIGH_BYTE]) * uint16_t(256) + uint16_t(uartBuffer[DATA_LENGTH_LOW_BYTE]));
-	if (data_length < 1 || data_length>32)
-	{
+	uint16_t name_length = readUInt16(uartBuffer + DATA_LENGTH_HIGH_BYTE);
+	if (data_length < 1 || data_length > 32) {
 		sendError(WRONG_DATA, REPLY_SET_BT_NAME);
 		return;
 	}
 
 	String btCommand;
 	btCommand.reserve(data_length + 1);
-	for (uint16_t i = 0; i < data_length; i++)
+	for (uint16_t i = 0; i < data_length; ++i) {
 		btCommand += String(static_cast<char>(uartBuffer[DATA_START_BYTE + i]));
+	}
 
 	preferences.putString(EEPROM_STATION_NAME, btCommand);
 	init_package(REPLY_SET_BT_NAME);
@@ -1902,9 +1895,8 @@ void setBtName()
 	sendData();
 }
 
-void BTAuthCompleteCallback(boolean success)
-{
-	logDebug(F("Pairing"), success);
+void BTAuthCompleteCallback(boolean success) {
+	logDebug(F("Pairing is"), success);
 }
 
 // установить лимит срабатывания сигнала о разряде батареи
@@ -1917,7 +1909,7 @@ void setBatteryLimit()
 		uint8_t byte[4];
 	} p;
 
-	for (uint8_t i = 0; i < 4; i++)
+	for (uint8_t i = 0; i < 4; ++i)
 	{
 		p.byte[i] = uartBuffer[DATA_START_BYTE + i];
 	}
@@ -1938,7 +1930,7 @@ void scanTeams()
 	logDebug(F("Scan teams in flash"));
 
 	// 0-1: номер команды
-	uint16_t startNumber = uint16_t(uint16_t(uartBuffer[DATA_START_BYTE] * 256) + uartBuffer[DATA_START_BYTE + 1]);
+	uint16_t startNumber = readUInt16(uartBuffer + DATA_START_BYTE);
 
 	logDebug(F("Start from team"), startNumber);
 
@@ -1955,7 +1947,7 @@ void scanTeams()
 
 	// 1...: список команд
 	//uint8_t data[2];
-	for (; startNumber <= maxTeamNumber; startNumber++)
+	for (; startNumber <= maxTeamNumber; ++startNumber)
 	{
 		logDebug(F("Trying team"), startNumber);
 
@@ -1992,7 +1984,7 @@ void getLastErrors()
 	}
 
 	sendData();
-	for (i = 0; i < LAST_ERRORS_LENGTH; i++)
+	for (i = 0; i < LAST_ERRORS_LENGTH; ++i)
 		lastErrors[i] = 0;
 }
 
@@ -2112,7 +2104,7 @@ void getBtName()
 	if (!addData(OK)) return;
 
 	// BluetoothName
-	for (int i = 0; i < btName.length(); i++)
+	for (int i = 0; i < btName.length(); ++i)
 		if (!addData(btName[i])) return;
 
 	sendData();
@@ -2123,7 +2115,7 @@ void getBtName()
 // заполнить буфер смены маски
 void saveNewMask()
 {
-	for (uint8_t i = 0; i < 8; i++)
+	for (uint8_t i = 0; i < 8; ++i)
 	{
 		newTeamMask[i] = uartBuffer[DATA_START_BYTE + i];
 	}
@@ -2133,7 +2125,7 @@ void saveNewMask()
 // очистить буфер смены маски
 void clearNewMask()
 {
-	for (uint8_t i = 0; i < 8; i++)
+	for (uint8_t i = 0; i < 8; ++i)
 		newTeamMask[i] = 0;
 
 	logDebug(F("Mask cleared"));
@@ -2360,7 +2352,7 @@ bool ntagWritePage(uint8_t* data, uint8_t pageAdr, bool verify, bool forceNoAuth
 		}
 
 
-		for (uint8_t i = 0; i < 4; i++)
+		for (uint8_t i = 0; i < 4; ++i)
 		{
 			logDebug(F("Buffer"), buffer[i], F("?="), data[i]);
 			if (buffer[i] != data[i])
@@ -2409,7 +2401,7 @@ bool ntagRead4pages(uint8_t pageAdr)
 		return false;
 	}
 
-	for (uint8_t i = 0; i < 16; i++)
+	for (uint8_t i = 0; i < 16; ++i)
 	{
 		ntag_page[i] = buffer[i];
 	}
@@ -2556,7 +2548,7 @@ int findNewPage()
 			// chip read error
 			return 0;
 		}
-		for (uint8_t n = 0; n < 4; n++)
+		for (uint8_t n = 0; n < 4; ++n)
 		{
 			// chip was checked by another station with the same number
 			if (stationMode == MODE_START_KP && ntag_page[n * 4] == stationNumber)
@@ -2735,7 +2727,7 @@ uint16_t refreshChipCounter()
 	logDebug(F("Refreshing chip counter"));
 	uint16_t chips = 0;
 	char data[12];
-	for (uint16_t i = 1; i <= maxTeamNumber; i++)
+	for (uint16_t i = 1; i <= maxTeamNumber; ++i)
 	{
 		String teamFile = "/team" + String(i);
 		File file = FFat.open(teamFile, FILE_READ);
@@ -2845,7 +2837,7 @@ uint8_t crcCalc(uint8_t* dataArray, uint16_t dataStart, uint16_t dataEnd)
 void floatToByte(uint8_t* bytes, float f)
 {
 	uint16_t length = sizeof(float);
-	for (uint16_t i = 0; i < length; i++)
+	for (uint16_t i = 0; i < length; ++i)
 		bytes[i] = ((uint8_t*)&f)[i];
 }
 
