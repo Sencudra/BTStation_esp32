@@ -1,4 +1,5 @@
 #pragma once
+
 // команды
 #define COMMAND_SET_MODE                 0x80
 #define COMMAND_SET_TIME                 0x81
@@ -30,7 +31,6 @@
 #define COMMAND_UNLOCK_CHIP              0x9d
 #define COMMAND_GET_AUTH                 0x9e
 #define COMMAND_GET_BTNAME               0x9f
-//#define COMMAND_SET_MAX_INIT_DAYS        0x9e
 
 // размеры данных для команд
 #define DATA_LENGTH_SET_MODE             1
@@ -63,7 +63,6 @@
 #define DATA_LENGTH_UNLOCK_CHIP          0
 #define DATA_LENGTH_GET_AUTH             0
 #define DATA_LENGTH_GET_BTNAME           0
-//#define DATA_LENGTH_SET_MAX_INIT_DAYS    1
 
 // ответы станции
 #define REPLY_SET_MODE                   0x90
@@ -96,7 +95,6 @@
 #define REPLY_UNLOCK_CHIP                0xad
 #define REPLY_GET_AUTH				     0xae
 #define REPLY_GET_BTNAME				 0xaf
-//#define REPLY_SET_MAX_INIT_DAYS          0xae
 
 // режимы станции
 #define MODE_INIT                        0

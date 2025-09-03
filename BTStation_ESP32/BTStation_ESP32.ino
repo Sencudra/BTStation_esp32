@@ -14,14 +14,16 @@
 #include "protocol_definitions.h"
 #include "preferences_definitions.h"
 #include "basic_helpers.h"
-#include "debug_helpers.h"
-
+#include "logger.h"
+#include "notifier.h"
 
 #if defined(USE_PN532)
-#include <Adafruit_PN532.h>
+	#include <Adafruit_PN532.h>
+	Adafruit_PN532 pn532(PN532_IRQ, PN532_RESET);
 #else
-#include <SPI.h>
-#include <MFRC522.h>
+	#include <SPI.h>
+	#include <MFRC522.h>
+	MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN); // рфид-модуль
 #endif
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -30,12 +32,6 @@
 
 #if !defined(CONFIG_BT_SPP_ENABLED)
 #error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
-#endif
-
-#if defined(USE_PN532)
-Adafruit_PN532 pn532(PN532_IRQ, PN532_RESET);
-#else
-MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN); // рфид-модуль
 #endif
 
 BluetoothSerial SerialBT;
@@ -85,66 +81,40 @@ uint32_t nextClockCheck = 0;
 uint32_t lastSystemClock = 0;
 uint32_t lastExternalClock = 0;
 
-void setup()
-{
+Notifier g_notifier;
+
+void setup() {
 	Serial.begin(UART_SPEED);
-
-	pinMode(GREEN_LED_PIN, OUTPUT);
-	pinMode(RED_LED_PIN, OUTPUT);
-	pinMode(BUZZER_PIN, OUTPUT);
-
-	digitalWrite(GREEN_LED_PIN, LOW);
-	digitalWrite(RED_LED_PIN, LOW);
-	digitalWrite(BUZZER_PIN, LOW);
-
-	init_buzzer_pin(BUZZER_PIN);
-
+	
+	setupNotifier();
+	
 	Wire.begin();
 	DS3231_init(DS3231_INTCN);
-
-#if defined(USE_PN532)
-	if (!pn532.begin())
-	{
-		logError(F("PN532 initialization failed"));
-		errorBeepMs(4, 200);
-		addLastError(STARTUP_RFID);
-	}
-#else
-	SPI.begin();
-	mfrc522.PCD_Init();
-	byte s = mfrc522.PCD_ReadRegister(MFRC522::PCD_Register::VersionReg);
-	if (s == 0 || s == 0xff)
-	{
-		logError(F("MFRC522 initialization failed"));
-		errorBeepMs(4, 200);
-		addLastError(STARTUP_RFID);
-	}
-	SPI.end();
-#endif
+	
+	setupRFID();
 
 	if (!FFat.begin())
 	{
 		logError(F("FFat failed, formatting..."));
 		bool result = FFat.format();
-		if (!result || !FFat.begin())
-		{
+		if (!result || !FFat.begin()) {
 			if (!result)
 				logError(F("FFat format failed"));
 			else
 				logError(F("FFat failed after format"));
-			errorBeepMs(4, 200);
+			g_notifier.notifyError();
 			addLastError(STARTUP_FFAT);
 		}
 	}
-
+	
 	// read settings
-	if (!preferences.begin(PREFERENCE_NAME, false))
-	{
+	if (!preferences.begin(PREFERENCE_NAME, false))	{
 		logError(F("Preferences mount failed"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_SETTINGS);
 	}
 	setupVars();
+
 	//читаем Bluetooth имя из памяти
 	String btName = preferences.getString(EEPROM_STATION_NAME, String(""));
 	if (!btName || btName.length() <= 0) {
@@ -160,44 +130,40 @@ void setup()
 	SerialBT.begin(btName.c_str()); //Bluetooth device name
 }
 
-void loop()
-{
+void loop() {
+	g_notifier.update();
+
 	//если режим КП то отметить чип автоматом
-	if (stationMode != MODE_INIT && millis() >= rfidReadStartTime)
-	{
+	if (stationMode != MODE_INIT && millis() >= rfidReadStartTime) {
 		processRfidCard();
 		rfidReadStartTime = millis() + RFID_READ_PERIOD;
 	}
 
 	// check UART for data
-	if (Serial.available())
-	{
+	if (Serial.available()) {
 		logDebug(F("UART data available"));
 		uartReady = readUart(Serial);
 	}
 
 	// check Bluetooth for data
-	if (SerialBT.available())
-	{
+	if (SerialBT.available()) {
 		logDebug(F("Bluetooth data available"));
 		uartReady = readUart(SerialBT);
 	}
 
 	//обработать пришедшую команду
-	if (uartReady)
-	{
+	if (uartReady) {
 		uartReady = false;
 		executeCommand();
 	}
 
 	// check receive timeout
-	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)
-	{
+	if (receivingData && millis() - receiveStartTime > RECEIVE_TIMEOUT)	{
 		logError(F("Receive timeout"));
 		uartBufferPosition = 0;
 		uartReady = false;
 		receivingData = false;
-		//errorBeepMs(1, 50);
+		g_notifier.notifyError();
 		addLastError(UART_TIMEOUT);
 	}
 
@@ -205,13 +171,45 @@ void loop()
 	checkClockIsRunning();
 }
 
-void setupVars()
-{
+void setupNotifier() {
+	pinMode(BUZZER_PIN, OUTPUT);
+	Buzzer buzzer{BUZZER_PIN};
+
+	pinMode(GREEN_LED_PIN, OUTPUT);
+	LED green_led{GREEN_LED_PIN};
+
+	pinMode(RED_LED_PIN, OUTPUT);
+	LED red_led{RED_LED_PIN};
+
+	g_notifier.init(buzzer, green_led, red_led);
+}
+
+void setupRFID() {
+#if defined(USE_PN532)
+	if (!pn532.begin())	{
+		logError(F("Failed to initialize PN532!"));
+		g_notifier.notifyError();
+		addLastError(STARTUP_RFID);
+	}
+#else
+	SPI.begin();
+	mfrc522.PCD_Init();
+	byte s = mfrc522.PCD_ReadRegister(MFRC522::PCD_Register::VersionReg);
+	if (s == 0 || s == 0xff) {
+		logError(F("MFRC522 initialization failed"));
+		g_notifier.notifyError();
+		addLastError(STARTUP_RFID);
+	}
+	SPI.end();
+#endif
+}
+
+void setupVars() {
 	//читаем номер станции из eeprom
 	stationNumber = preferences.getUInt(EEPROM_STATION_NUMBER, 0);
 	if (stationNumber == 0) {
 		logError(F("Station number not set"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_NUMBER);
 	}
 
@@ -220,7 +218,7 @@ void setupVars()
 	if (stationMode == 0xff) {
 		stationMode = MODE_INIT;
 		logError(F("Station mode invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_MODE);
 	}
 
@@ -229,7 +227,7 @@ void setupVars()
 	if (voltageCoeff <= 0) {
 		voltageCoeff = 0.0011;
 		logError(F("Station voltage coefficient invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_GAIN); //STARTUP: incorrect gain in EEPROM
 	}
 
@@ -238,7 +236,7 @@ void setupVars()
 	if (gainCoeff == 0xff) {
 		gainCoeff = 96;
 		logError(F("Station antenna gain invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_GAIN); //STARTUP: incorrect gain in EEPROM
 	}
 
@@ -250,7 +248,7 @@ void setupVars()
 	else {
 		selectChipType(NTAG215_ID);
 		logError(F("Station chip type invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_CHIP_TYPE);
 	}
 
@@ -259,7 +257,7 @@ void setupVars()
 	if (teamFlashSize == 0) {
 		teamFlashSize = EEPROM_TEAM_BLOCK_SIZE_DEFAULT;
 		logError(F("Station team size invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_TEAM_SIZE);
 	}
 
@@ -268,7 +266,7 @@ void setupVars()
 	if (batteryLimit < 0) {
 		batteryLimit = 0;
 		logError(F("Station battery limit invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_BATTERY_LIMIT);
 	}
 
@@ -283,7 +281,7 @@ void setupVars()
 	else {
 		scanAutoreport = false;
 		logError(F("Station auto report setting invalid"));
-		errorBeepMs(4, 200);
+		g_notifier.notifyError();
 		addLastError(STARTUP_AUTOREPORT);
 	}
 
@@ -319,12 +317,10 @@ void setupVars()
 	lastTeamFlag = 0;
 	clearNewMask();
 
-
-	beep(1, 800);
+	g_notifier.notify(1, 800);
 }
 
-bool RfidStart()
-{
+bool RfidStart() {
 	bool result = false;
 #if defined(USE_PN532)
 	uint8_t uid[8] = { 0 };    // Buffer to store the returned UID
@@ -385,8 +381,7 @@ void RfidEnd()
 }
 
 // Обработка поднесенного чипа
-void processRfidCard()
-{
+void processRfidCard() {
 	if (stationNumber == 0 || stationNumber == 0xffffffff)
 		return;
 
@@ -399,20 +394,17 @@ void processRfidCard()
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
 	logDebug(F("Searching for RFID chip"));
 
-	if (!RfidStart())
-	{
+	if (!RfidStart()) {
 		RfidEnd();
 		lastTeamFlag = 0;
-		logError(F("Fail to find RFID chip"));
 		return;
 	}
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_CHIP_SYS2))
-	{
+	if (!ntagRead4pages(PAGE_CHIP_SYS2)) {
 		RfidEnd();
 		logError(F("Failed to read RFID chip"));
-		//errorBeep(1);
+		g_notifier.notifyError();
 		addLastError(PROCESS_READ_CHIP);
 		return;
 	}
@@ -420,11 +412,10 @@ void processRfidCard()
 	logDebug(F("Reading RFID chip"));
 
 	//неправильный тип чипа
-	if (ntag_page[2] != chipType)
-	{
+	if (ntag_page[2] != chipType) {
 		RfidEnd();
 		logError(F("Incorrect hardware RFID chip type"));
-		errorBeep(1);
+		g_notifier.notifyError();
 		addLastError(PROCESS_HW_CHIP_TYPE);
 		return;
 	}
@@ -438,13 +429,12 @@ void processRfidCard()
 	*/
 
 	// чип от другой прошивки
-	if (ntag_page[7] != FW_VERSION)
-	{
+	if (ntag_page[7] != FW_VERSION)	{
 		RfidEnd();
 		logError(F("Incorrect firmware version"));
 		logDebug(F("Expected version: %d"), FW_VERSION);
 		logDebug(F("Actual version: %d"), ntag_page[7]);
-		errorBeep(4);
+		g_notifier.notifyError();
 		addLastError(PROCESS_FW_VERSION);
 		return;
 	}
@@ -457,23 +447,21 @@ void processRfidCard()
 	initTime += ntag_page[10];
 	initTime = initTime << 8;
 	initTime += ntag_page[11];
-	if ((systemTime.unixtime - initTime) > maxTimeInit)
-	{
+	if ((systemTime.unixtime - initTime) > maxTimeInit)	{
 		RfidEnd();
 		logError(F("Outdated RFID chip"));
-		errorBeep(4);
+		g_notifier.notifyError();
 		addLastError(PROCESS_INIT_TIME); //CARD PROCESSING: chip init time is due
 		return;
 	}
 
 	// Если номер чипа =0 или >maxTeamNumber
 	uint16_t teamNumber = (ntag_page[4] << 8) + ntag_page[5];
-	if (teamNumber < 1 || teamNumber > maxTeamNumber)
-	{
+	if (teamNumber < 1 || teamNumber > maxTeamNumber) {
 		RfidEnd();
 		logError(F("Incorrect chip number"));
 		logDebug(F("Chip number: %d"), teamNumber);
-		errorBeep(4);
+		g_notifier.notifyError();
 		addLastError(PROCESS_CHIP_NUMBER);
 		return;
 	}
@@ -501,7 +489,7 @@ void processRfidCard()
 				RfidEnd();
 				logError(F("Failed to write mask"));
 				digitalWrite(GREEN_LED_PIN, LOW);
-				errorBeep(1);
+				g_notifier.notifyError();
 				addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing to chip
 				return;
 			}
@@ -553,7 +541,7 @@ void processRfidCard()
 		logError(F("Chip already checked on start KP"));
 		RfidEnd();
 		//digitalWrite(GREEN_LED_PIN, LOW);
-		errorBeep(1);
+		g_notifier.notifyError();
 		addLastError(PROCESS_ALREADY_CHECKED);
 		lastTeamFlag = teamNumber;
 		return;
@@ -563,35 +551,28 @@ void processRfidCard()
 	int newPage = findNewPage();
 
 	// ошибка чтения чипа
-	if (newPage == 0)
-	{
+	if (newPage == 0) {
 		RfidEnd();
-		//digitalWrite(GREEN_LED_PIN, LOW);
-		errorBeep(1);
-		addLastError(PROCESS_READ_CHIP);
 		logError(F("Can't read chip"));
+		g_notifier.notifyError();
+		addLastError(PROCESS_READ_CHIP);
 		return;
 	}
 
 	// больше/меньше нормы... Наверное, переполнен???
-	if (newPage != -1 && (newPage < PAGE_DATA_START || newPage >= tagMaxPage))
-	{
+	if (newPage != -1 && (newPage < PAGE_DATA_START || newPage >= tagMaxPage)) {
 		RfidEnd();
-		//digitalWrite(GREEN_LED_PIN, LOW);
-		errorBeep(4);
-		addLastError(PROCESS_FIND_FREE_PAGE);
-
 		logError(F("Incorrect chip page number"));
 		logDebug(F("Chip page number: %d"), newPage);
+		g_notifier.notifyError();
+		addLastError(PROCESS_FIND_FREE_PAGE);
 		return;
 	}
 
 	// chip was checked by another station with the same number
-	if (newPage == -1)
-	{
+	if (newPage == -1) {
 		logError(F("Chip marked by another station"));
 		lastTeamFlag = teamNumber;
-		//digitalWrite(GREEN_LED_PIN, LOW);
 		return;
 	}
 
@@ -599,29 +580,26 @@ void processRfidCard()
 
 	// Пишем на чип отметку
 	digitalWrite(GREEN_LED_PIN, HIGH);
-	if (!writeCheckPointToCard(newPage, systemTime.unixtime))
-	{
+	if (!writeCheckPointToCard(newPage, systemTime.unixtime)) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
-		errorBeep(1);
-		addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing chip
 		logError(F("Failed to write chip"));
+		g_notifier.notifyError();
+		addLastError(PROCESS_WRITE_CHIP);
 		return;
 	}
+
 	// Пишем дамп чипа во флэш
-	if (!writeDumpToFlash(teamNumber, systemTime.unixtime, initTime, mask))
-	{
+	if (!writeDumpToFlash(teamNumber, systemTime.unixtime, initTime, mask)) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
-		errorBeep(2);
-		addLastError(PROCESS_SAVE_DUMP); //CARD PROCESSING: error saving dump
-		logError(F("Failed to write dump"));
+		logError(F("Failed to write chip dump to flash"));
+		g_notifier.notifyError();
+		addLastError(PROCESS_SAVE_DUMP);
 		return;
 	}
 
 	RfidEnd();
 	digitalWrite(GREEN_LED_PIN, LOW);
-	beep(1, 200);
+	g_notifier.notify(1, 200);
 
 	// добавляем в буфер последних команд
 	addLastTeam(teamNumber, already_checked);
@@ -698,7 +676,7 @@ bool readUart(Stream& SerialPort) {
 
 					uartBufferPosition = 0;
 					receivingData = false;
-					errorBeepMs(3, 50);
+					g_notifier.notifyError();
 					addLastError(UART_PACKET_LENGTH);
 					sendError(PARSE_PACKET_LENGTH_ERROR, uartBuffer[COMMAND_BYTE] + 0x10);
 					return false;
@@ -721,7 +699,7 @@ bool readUart(Stream& SerialPort) {
 						logError(F("Incorrect station number"));
 						uartBufferPosition = 0;
 						receivingData = false;
-						errorBeepMs(3, 50);
+						g_notifier.notifyError();
 						addLastError(UART_WRONG_STATION);
 						sendError(WRONG_STATION, uartBuffer[COMMAND_BYTE] + 0x10);
 						return false;
@@ -735,7 +713,7 @@ bool readUart(Stream& SerialPort) {
 					logError(F("Incorrect CRC"));
 					uartBufferPosition = 0;
 					receivingData = false;
-					errorBeepMs(3, 50);
+					g_notifier.notifyError();
 					addLastError(UART_CRC);
 					return false;
 				}
@@ -2140,57 +2118,6 @@ uint16_t getBatteryLevel()
 	return AverageValue;
 }
 
-// сигнал станции, длительность сигнала и задержки в мс и число повторений
-void beep(uint8_t n, uint16_t ms)
-{
-	for (; n > 0; n--)
-	{
-		digitalWrite(GREEN_LED_PIN, HIGH);
-		esp32Tone(BUZZER_PIN, 4000);
-		delay(ms);
-		esp32NoTone(BUZZER_PIN);
-		digitalWrite(GREEN_LED_PIN, LOW);
-		if (n - 1 > 0)
-			delay(500);
-
-		yield();
-	}
-}
-
-// сигнал ошибки станции
-void errorBeepMs(uint8_t n, uint16_t ms)
-{
-	for (; n > 0; n--)
-	{
-		digitalWrite(RED_LED_PIN, HIGH);
-		esp32Tone(BUZZER_PIN, 500);
-		delay(ms);
-		esp32NoTone(BUZZER_PIN);
-		digitalWrite(RED_LED_PIN, LOW);
-		if (n - 1 > 0)
-			delay(500);
-
-		yield();
-	}
-}
-
-// сигнал ошибки станции
-void errorBeep(uint8_t n)
-{
-	for (; n > 0; n--)
-	{
-		digitalWrite(RED_LED_PIN, HIGH);
-		esp32Tone(BUZZER_PWM_CHANNEL, 500);
-		delay(500);
-		esp32NoTone(BUZZER_PWM_CHANNEL);
-		digitalWrite(RED_LED_PIN, LOW);
-		if (n - 1 > 0)
-			delay(500);
-
-		yield();
-	}
-}
-
 // инициализация пакета данных
 void init_package(uint8_t command)
 {
@@ -2858,35 +2785,28 @@ bool selectChipType(uint8_t type)
 	return true;
 }
 
-void checkBatteryLevel()
-{
-	if (batteryLimit == 0)
-		return;
+void checkBatteryLevel() {
+	if (batteryLimit == 0) return;
 
 	batteryLevel = (batteryLevel + getBatteryLevel()) / 2;
-	if ((float)((float)batteryLevel * voltageCoeff) <= batteryLimit)
-	{
-		if (batteryAlarmCount > BATTERY_ALARM_COUNT)
-		{
-			addLastError(POWER_UNDERVOLTAGE);
-			digitalWrite(RED_LED_PIN, HIGH);
-			errorBeep(1);
-			delay(50);
-			digitalWrite(RED_LED_PIN, LOW);
+	if (static_cast<float>(batteryLevel) * voltageCoeff <= batteryLimit) {
+		if (batteryAlarmCount > BATTERY_ALARM_COUNT) {
+			logError(F("Battery is low!"));
 			batteryAlarmCount = 0;
+			g_notifier.notifyError();
+			addLastError(POWER_UNDERVOLTAGE);
+			return;
 		}
-		else {
-			++batteryAlarmCount;
-		}
+
+		++batteryAlarmCount;
+		return;
 	}
-	else
-		batteryAlarmCount = 0;
+
+	batteryAlarmCount = 0;
 }
 
-void checkClockIsRunning()
-{
-	if (millis() > nextClockCheck)
-	{
+void checkClockIsRunning() {
+	if (millis() > nextClockCheck) {
 		uint32_t currentMillis = millis();
 		uint32_t diffSystemClock = (currentMillis - lastSystemClock) / 1000;
 
@@ -2894,46 +2814,16 @@ void checkClockIsRunning()
 		DS3231_get(&systemTime);
 		uint32_t diffExternalClock = systemTime.unixtime - lastExternalClock;
 
-		if (abs(long(diffSystemClock - diffExternalClock)) > 2)
-		{
+		if (abs(long(diffSystemClock - diffExternalClock)) > 2) {
+			logError(F("External clock is not working."));
+			g_notifier.notifyError();
 			addLastError(CLOCK_ERROR);
-			digitalWrite(RED_LED_PIN, HIGH);
-			errorBeep(1);
-			delay(50);
-			digitalWrite(RED_LED_PIN, LOW);
 		}
 
 		lastSystemClock = currentMillis;
 		lastExternalClock = systemTime.unixtime;
 		nextClockCheck = currentMillis + RTC_ALARM_DELAY;
 	}
-}
-
-void init_buzzer_pin(uint8_t buzzerPin)
-{
-	ledcAttach(buzzerPin, PWM_CHANNEL_FREQ, PWM_RESOLUTION);
-	set_output(buzzerPin, 0);
-}
-
-void set_output(uint8_t pin, int outValue)
-{
-	if (outValue < 0)
-		outValue = 0;
-
-	if (outValue > MAX_DUTY_CYCLE)
-		outValue = MAX_DUTY_CYCLE;
-
-	ledcWrite(pin, outValue);
-}
-
-void esp32Tone(uint8_t pin, uint32_t freq)
-{
-	ledcWriteTone(pin, freq);    // channel, frequency
-}
-
-void esp32NoTone(uint8_t pin)
-{
-	ledcWriteTone(pin, 0);
 }
 
 #ifdef DEBUG
