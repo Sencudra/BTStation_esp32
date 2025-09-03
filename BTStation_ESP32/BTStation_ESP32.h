@@ -1,10 +1,7 @@
 #pragma once
 
-bool RfidStart();
-void RfidEnd();
-void processRfidCard();
-bool readUart(Stream& SerialPort);
-void executeCommand();
+// Commands
+
 void setMode();
 void setTime();
 void resetStation();
@@ -23,8 +20,6 @@ void setVCoeff();
 void setGain();
 void setChipType();
 void setTeamFlashSize();
-void BTConfirmRequestCallback(uint32_t numVal);
-void BTAuthCompleteCallback(boolean success);
 void setBtName();
 void setBatteryLimit();
 void scanTeams();
@@ -34,12 +29,23 @@ void setAuth();
 void setAuthPwd();
 void setAuthPack();
 void unlockChip();
+
+// Internal
+
+bool RfidStart();
+void RfidEnd();
+void processRfidCard();
+bool readUart(Stream& SerialPort);
+void executeCommand();
+
+void BTConfirmRequestCallback(uint32_t numVal);
+void BTAuthCompleteCallback(boolean success);
+
 void saveNewMask();
 void clearNewMask();
+
 uint16_t getBatteryLevel();
-void beep(uint8_t, uint16_t);
-void errorBeepMs(uint8_t, uint16_t);
-void errorBeep(uint8_t);
+
 void init_package(uint8_t);
 bool addData(uint8_t);
 void sendData();
@@ -64,10 +70,7 @@ void floatToByte(uint8_t*, float);
 bool selectChipType(uint8_t);
 void checkBatteryLevel();
 void checkClockIsRunning();
-void init_buzzer_pin(uint8_t buzzerPin);
-void set_output(uint8_t pin, int outValue);
-void esp32Tone(uint8_t pwmChannelNum, uint32_t freq);
-void esp32NoTone(uint8_t pwmChannelNum);
+
 #ifdef DEBUG
 void listDir(const char* dirname, uint8_t levels);
 #endif
