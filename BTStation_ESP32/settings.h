@@ -28,6 +28,9 @@
 
 #define RECEIVE_TIMEOUT		    1000 // тайм-аут приема команды с момента начала
 #define RFID_READ_PERIOD		1000 // периодичность поиска чипа
-#define LAST_TEAMS_LENGTH		30 // размер буфера последних команд
+
+// должно совпадать со значением в SportiduinoManager (или нужно сделать там исправление в коде)
+#define LAST_TEAMS_LENGTH		10 // размер буфера последних команд
+
 #define LAST_ERRORS_LENGTH		30 // размер буфера последних ошибок
 #define MAX_PAKET_LENGTH		1200 // максимальный размер пакета данных для передачи по UART/Bluetooth
