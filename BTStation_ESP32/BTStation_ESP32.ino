@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <ds3231.h>
 #include <esp_mac.h>
+#include <cstring>
 
 #include "BTStation_ESP32.h"
 #include "command_definitions.h"
@@ -470,25 +471,15 @@ void processRfidCard() {
 	// 0-1: номер команды
 	// 2-5: время выдачи чипа
 	// 6-7: маска участников
-	if (newTeamMask[0] + newTeamMask[1] != 0
-		&& ntag_page[4] == newTeamMask[0]
-		&& ntag_page[5] == newTeamMask[1]
-		&& ntag_page[8] == newTeamMask[2]
-		&& ntag_page[9] == newTeamMask[3]
-		&& ntag_page[10] == newTeamMask[4]
-		&& ntag_page[11] == newTeamMask[5])
-	{
+	if ((newTeamMask[0] | newTeamMask[1]) && std::memcmp(&ntag_page[4], newTeamMask, 6) == 0) {
 		logDebug(F("Updating mask"));
 
-		if (ntag_page[12] != newTeamMask[6] || ntag_page[13] != newTeamMask[7])
-		{
-			digitalWrite(GREEN_LED_PIN, HIGH);
+		// Обновлен номер команды?
+		if (std::memcmp(&ntag_page[12], &newTeamMask[6], 2) != 0) {
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[14], ntag_page[15] };
-			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
-			{
+			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false)) {
 				RfidEnd();
-				logError(F("Failed to write mask"));
-				digitalWrite(GREEN_LED_PIN, LOW);
+				logError(F("Failed to write updated team mask"));
 				g_notifier.notifyError();
 				addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing to chip
 				return;
