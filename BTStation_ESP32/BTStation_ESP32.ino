@@ -383,8 +383,7 @@ void RfidEnd()
 
 // Обработка поднесенного чипа
 void processRfidCard() {
-	if (stationNumber == 0 || stationNumber == 0xffffffff)
-		return;
+	if (stationNumber == 0 || stationNumber == 0xffffffff) return;
 
 #ifdef BENCHMARK
 	const unsigned long startCheck = millis();
@@ -422,7 +421,7 @@ void processRfidCard() {
 	}
 
 	/*
-	Фильтруем
+	Фильтруем чипы
 	1 - чип от другой прошивки
 	2 - чип более недельной давности инициализации
 	3 - чипы с командой №0 или >maxTeamNumber
@@ -452,7 +451,7 @@ void processRfidCard() {
 		RfidEnd();
 		logError(F("Outdated RFID chip"));
 		g_notifier.notifyError();
-		addLastError(PROCESS_INIT_TIME); //CARD PROCESSING: chip init time is due
+		addLastError(PROCESS_INIT_TIME);
 		return;
 	}
 
@@ -472,7 +471,7 @@ void processRfidCard() {
 	// 2-5: время выдачи чипа
 	// 6-7: маска участников
 	if ((newTeamMask[0] | newTeamMask[1]) && std::memcmp(&ntag_page[4], newTeamMask, 6) == 0) {
-		logDebug(F("Updating mask"));
+		logDebug(F("Updating team mask"));
 
 		// Обновлен номер команды?
 		if (std::memcmp(&ntag_page[12], &newTeamMask[6], 2) != 0) {
@@ -481,7 +480,7 @@ void processRfidCard() {
 				RfidEnd();
 				logError(F("Failed to write updated team mask"));
 				g_notifier.notifyError();
-				addLastError(PROCESS_WRITE_CHIP); //CARD PROCESSING: error writing to chip
+				addLastError(PROCESS_WRITE_CHIP);
 				return;
 			}
 		}
@@ -489,7 +488,7 @@ void processRfidCard() {
 		RfidEnd();
 		clearNewMask();
 		lastTeamFlag = teamNumber;
-		digitalWrite(GREEN_LED_PIN, LOW);
+		g_notifier.notify();
 		logDebug(F("Mask is updated"));
 		return;
 	}
@@ -497,21 +496,17 @@ void processRfidCard() {
 	uint16_t mask = (ntag_page[12] << 8) + ntag_page[13];
 
 	// Если это повторная отметка
-	if (teamNumber == lastTeamFlag)
-	{
-		logDebug(F("Same chip attached"));
+	if (teamNumber == lastTeamFlag)	{
+		logDebug(F("Same chip js attached"));
 		RfidEnd();
 		return;
 	}
 
 	bool already_checked = false;
 	// сравнить с буфером последних команд
-	if (stationMode == MODE_START_KP)
-	{
-		for (uint8_t i = 0; i < LAST_TEAMS_LENGTH * 2; i = i + 2)
-		{
-			if (lastTeams[i] == ntag_page[0] && lastTeams[i + 1] == ntag_page[1])
-			{
+	if (stationMode == MODE_START_KP) {
+		for (uint8_t i = 0; i < LAST_TEAMS_LENGTH * 2; i = i + 2) {
+			if (lastTeams[i] == ntag_page[0] && lastTeams[i + 1] == ntag_page[1]) {
 				already_checked = true;
 				logDebug(F("Chip already checked"));
 				break;
@@ -520,21 +515,18 @@ void processRfidCard() {
 	}
 
 	// Есть ли чип на флэше
-	if (!already_checked && checkTeamExists(teamNumber))
-	{
+	if (!already_checked && checkTeamExists(teamNumber)) {
 		already_checked = true;
 		logDebug(F("Chip already checked on flash"));
 	}
 
 	// если известный чип и стартовый КП
-	if (already_checked && stationMode == MODE_START_KP)
-	{
-		logError(F("Chip already checked on start KP"));
+	if (already_checked && stationMode == MODE_START_KP) {
 		RfidEnd();
-		//digitalWrite(GREEN_LED_PIN, LOW);
+		lastTeamFlag = teamNumber;
+		logError(F("Chip already checked on start KP"));
 		g_notifier.notifyError();
 		addLastError(PROCESS_ALREADY_CHECKED);
-		lastTeamFlag = teamNumber;
 		return;
 	}
 
@@ -563,6 +555,7 @@ void processRfidCard() {
 	// chip was checked by another station with the same number
 	if (newPage == -1) {
 		logError(F("Chip marked by another station"));
+		g_notifier.notifyError();
 		lastTeamFlag = teamNumber;
 		return;
 	}
@@ -570,7 +563,6 @@ void processRfidCard() {
 	logDebug(F("Writing to chip"));
 
 	// Пишем на чип отметку
-	digitalWrite(GREEN_LED_PIN, HIGH);
 	if (!writeCheckPointToCard(newPage, systemTime.unixtime)) {
 		RfidEnd();
 		logError(F("Failed to write chip"));
@@ -589,8 +581,7 @@ void processRfidCard() {
 	}
 
 	RfidEnd();
-	digitalWrite(GREEN_LED_PIN, LOW);
-	g_notifier.notify(1, 200);
+	g_notifier.notify();
 
 	// добавляем в буфер последних команд
 	addLastTeam(teamNumber, already_checked);
@@ -606,16 +597,13 @@ void processRfidCard() {
 	Serial.println(String(result));
 #endif
 
-	if (scanAutoreport)
-	{
+	if (scanAutoreport)	{
 		//autoreport new command
-		if (/*digitalRead(BT_CONNECTED) || */Serial)
-		{
+		if (/*digitalRead(BT_CONNECTED) || */Serial) {
 			logDebug(F("Autoreport team"));
 			logDebug(F("Team number: %d"), teamNumber);
 
-			if (readTeamFromFlash(teamNumber))
-			{
+			if (readTeamFromFlash(teamNumber)) {
 				init_package(REPLY_GET_TEAM_RECORD);
 				// 0: код ошибки
 				if (!addData(OK)) return;
@@ -630,8 +618,9 @@ void processRfidCard() {
 				}
 				sendData();
 			}
-			else
-				addLastError(PROCESS_SEND_AUTOREPORT); //CARD PROCESSING: error sending autoreport
+			else {
+				addLastError(PROCESS_SEND_AUTOREPORT);
+			}
 		}
 	}
 }
@@ -1027,35 +1016,34 @@ void getStatus()
 }
 
 // инициализация чипа
-void initChip()
-{
+void initChip() {
+	logDebug(F("Init chip command"));
+
 	DS3231_get(&systemTime);
 
-	digitalWrite(GREEN_LED_PIN, HIGH);
-
 	// Look for new cards
-	if (!RfidStart())
-	{
+	if (!RfidStart()) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("RFID chip not found"));
+		g_notifier.notifyError();
 		sendError(NO_CHIP, REPLY_INIT_CHIP);
 		return;
 	}
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_CHIP_SYS2))
-	{
+	if (!ntagRead4pages(PAGE_CHIP_SYS2)) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to read RFID chip"));
+		g_notifier.notifyError();
 		sendError(RFID_READ_ERROR, REPLY_INIT_CHIP);
 		return;
 	}
 
 	// Фильтруем неправильный тип чипа
-	if (ntag_page[2] != chipType)
-	{
+	if (ntag_page[2] != chipType) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Incorrect hardware RFID chip type"));
+		g_notifier.notifyError();
 		sendError(WRONG_CHIP_TYPE, REPLY_INIT_CHIP);
 		return;
 	}
@@ -1068,38 +1056,32 @@ void initChip()
 	initTime += ntag_page[10];
 	initTime <<= 8;
 	initTime += ntag_page[11];
-	if ((systemTime.unixtime - initTime) < maxTimeInit)
-	{
+	if ((systemTime.unixtime - initTime) < maxTimeInit)	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("RFID chip is outdated"));
+		g_notifier.notifyError();
 		sendError(LOW_INIT_TIME, REPLY_INIT_CHIP);
 		return;
 	}
 
-	if (AuthEnabled)
-	{
-		if (!ntagSetPassword(AuthPwd, AuthPack, true, false, 0, 0))
-		{
-			RfidEnd();
-			digitalWrite(GREEN_LED_PIN, LOW);
-			sendError(CHIP_SETPASS_ERROR, REPLY_INIT_CHIP);
-			return;
-		}
+	if (AuthEnabled && !ntagSetPassword(AuthPwd, AuthPack, true, false, 0, 0))	{
+		RfidEnd();
+		logError(F("Failed to set RFID auth"));
+		g_notifier.notifyError();
+		sendError(CHIP_SETPASS_ERROR, REPLY_INIT_CHIP);
+		return;
 	}
 
 	// заполняем чип 0x00
-	uint8_t dataBlock[4] = { 0,0,0,0 };
-	for (uint8_t page = PAGE_CHIP_NUM; page < tagMaxPage; ++page)
-	{
-		if (!ntagWritePage(dataBlock, page, true, false))
-		{
+	uint8_t dataBlock[4] = { 0, 0, 0, 0 };
+	for (uint8_t page = PAGE_CHIP_NUM; page < tagMaxPage; ++page) {
+		if (!ntagWritePage(dataBlock, page, true, false)) {
 			RfidEnd();
-			digitalWrite(GREEN_LED_PIN, LOW);
+			logError(F("Failed to write RFID chip"));
+			g_notifier.notifyError();
 			sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
-
 			return;
 		}
-
 		yield();
 	}
 
@@ -1112,12 +1094,11 @@ void initChip()
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 1];
 	dataBlock[2] = chipType;
 	dataBlock[3] = FW_VERSION;
-	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM, true, false))
-	{
+	if (!ntagWritePage(dataBlock, PAGE_CHIP_NUM, true, false)) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to write RFID chip: 1"));
+		g_notifier.notifyError();
 		sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
-
 		return;
 	}
 
@@ -1126,12 +1107,11 @@ void initChip()
 	dataBlock[1] = (systemTime.unixtime & 0x00FF0000) >> 16;
 	dataBlock[2] = (systemTime.unixtime & 0x0000FF00) >> 8;
 	dataBlock[3] = systemTime.unixtime & 0x000000FF;
-	if (!ntagWritePage(dataBlock, PAGE_INIT_TIME, true, false))
-	{
+	if (!ntagWritePage(dataBlock, PAGE_INIT_TIME, true, false))	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to write RFID chip: 2"));
+		g_notifier.notifyError();
 		sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
-
 		return;
 	}
 
@@ -1140,31 +1120,32 @@ void initChip()
 	dataBlock[1] = uartBuffer[DATA_START_BYTE + 3];
 	dataBlock[2] = 0;
 	dataBlock[3] = 0;
-	if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
-	{
+	if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to write RFID chip: 3"));
+		g_notifier.notifyError();
 		sendError(RFID_WRITE_ERROR, REPLY_INIT_CHIP);
-
 		return;
 	}
 
 	// получаем UID чипа
-	if (!ntagRead4pages(PAGE_UID1))
-	{
+	if (!ntagRead4pages(PAGE_UID1))	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to read RFID chip UID"));
+		g_notifier.notifyError();
 		sendError(RFID_READ_ERROR, REPLY_INIT_CHIP);
 		return;
 	}
 
 	RfidEnd();
-	digitalWrite(GREEN_LED_PIN, LOW);
-
+	
 	init_package(REPLY_INIT_CHIP);
 	if (!addData(OK))
 		return;
 
+	g_notifier.notify();
+	logDebug(F("RFID chip is initialized"));
+		
 	// добавляем в ответ время инициализации
 	bool flag = true;
 	flag &= addData((systemTime.unixtime & 0xFF000000) >> 24);
@@ -1174,8 +1155,7 @@ void initChip()
 	if (!flag) return;
 
 	// добавляем в ответ UID
-	for (uint8_t i = 0; i <= 7; ++i)
-	{
+	for (uint8_t i = 0; i <= 7; ++i) {
 		if (!addData(ntag_page[i])) return;
 	}
 	sendData();
@@ -1240,19 +1220,16 @@ void getTeamRecord()
 }
 
 // читаем страницы с чипа
-void readCardPages()
-{
+void readCardPages() {
 #ifdef BENCHMARK
 	const unsigned long startCheck = millis();
 #endif
 
-	digitalWrite(GREEN_LED_PIN, HIGH);
-
 	// Look for new cards
-	if (!RfidStart())
-	{
+	if (!RfidStart()) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("RFID chip not found"));
+		g_notifier.notifyError();
 		sendError(NO_CHIP, REPLY_READ_CARD_PAGE);
 		return;
 	}
@@ -1265,61 +1242,57 @@ void readCardPages()
 	// 0: код ошибки
 	// 1-8: UID чипа
 	// 9-12: данные из страницы чипа(4 байта)
-	if (!addData(OK))
-	{
+	if (!addData(OK)) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to form response: OK"));
+		g_notifier.notifyError();
 		return;
 	}
 
 	// читаем UID
-	if (!ntagRead4pages(PAGE_UID1))
-	{
+	if (!ntagRead4pages(PAGE_UID1))	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to read RFID chip UID"));
+		g_notifier.notifyError();
 		sendError(RFID_READ_ERROR, REPLY_READ_CARD_PAGE);
 		return;
 	}
 
 	// пишем UID в буфер ответа
-	for (uint8_t i = 0; i <= 7; ++i)
-	{
-		if (!addData(ntag_page[i]))
-		{
+	for (uint8_t i = 0; i <= 7; ++i) {
+		if (!addData(ntag_page[i]))	{
 			RfidEnd();
-			digitalWrite(GREEN_LED_PIN, LOW);
+			logError(F("Failed to form response: UID"));
+			g_notifier.notifyError();
 			return;
 		}
 		yield();
 	}
 
 	// начальная страница
-	if (!addData(pageFrom))
-	{
+	if (!addData(pageFrom))	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to form response: start page"));
+		g_notifier.notifyError();
 		return;
 	}
 
-	while (pageFrom <= pageTo)
-	{
-		if (!ntagRead4pages(pageFrom))
-		{
+	while (pageFrom <= pageTo) {
+		if (!ntagRead4pages(pageFrom)) {
 			RfidEnd();
-			digitalWrite(GREEN_LED_PIN, LOW);
+			logError(F("Failed to read RFID chip pages: "), pageFrom);
+			g_notifier.notifyError();
 			sendError(RFID_READ_ERROR, REPLY_READ_CARD_PAGE);
 			return;
 		}
 		uint8_t n = (pageTo - pageFrom + 1);
 		if (n > 4) n = 4;
-		for (uint8_t i = 0; i < n; ++i)
-		{
-			for (uint8_t j = 0; j < 4; ++j)
-			{
-				if (!addData(ntag_page[i * 4 + j]))
-				{
+		for (uint8_t i = 0; i < n; ++i)	{
+			for (uint8_t j = 0; j < 4; ++j)	{
+				if (!addData(ntag_page[i * 4 + j]))	{
 					RfidEnd();
-					digitalWrite(GREEN_LED_PIN, LOW);
+					logError(F("Failed to form response: data"));
+					g_notifier.notifyError();
 					return;
 				}
 
@@ -1334,7 +1307,9 @@ void readCardPages()
 	}
 
 	RfidEnd();
-	digitalWrite(GREEN_LED_PIN, LOW);
+
+	g_notifier.notify();
+	logDebug(F("Read pages from chip"));
 
 #ifdef BENCHMARK
 	const unsigned long result = millis() - startCheck;
@@ -1346,8 +1321,9 @@ void readCardPages()
 }
 
 // Обновить маску команды в буфере
-void updateTeamMask()
-{
+void updateTeamMask() {
+	logDebug(F("Update team mask command"));
+
 	DS3231_get(&systemTime);
 
 	// 0-1: номер команды
@@ -1357,8 +1333,11 @@ void updateTeamMask()
 
 	init_package(REPLY_UPDATE_TEAM_MASK);
 	// 0: код ошибки
-	if (!addData(OK))
+	if (!addData(OK)) {
+		logError(F("Failed to form response: OK"));
+		g_notifier.notifyError();
 		return;
+	}
 
 	sendData();
 
@@ -1367,27 +1346,29 @@ void updateTeamMask()
 
 	// включаем SPI ищем чип вблизи. Если не находим выходим из функции чтения чипов
 	// Look for new cards
-	if (!RfidStart())
-	{
+	if (!RfidStart()) {
 		RfidEnd();
+		logError(F("RFID chip not found"));
+		g_notifier.notifyError();
 		lastTeamFlag = 0;
 		sendError(NO_CHIP, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_UID1))
-	{
+	if (!ntagRead4pages(PAGE_UID1))	{
 		RfidEnd();
+		logError(F("Failed to read RFID chip UID"));
+		g_notifier.notifyError();
 		sendError(RFID_READ_ERROR, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
 
 	//неправильный тип чипа
-	if (ntag_page[14] != chipType)
-	{
+	if (ntag_page[14] != chipType) {
 		RfidEnd();
 		logError(F("Incorrect chip type"));
+		g_notifier.notifyError();
 		sendError(WRONG_CHIP_TYPE, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1402,16 +1383,16 @@ void updateTeamMask()
 	*/
 
 	// читаем блок информации
-	if (!ntagRead4pages(PAGE_CHIP_NUM))
-	{
+	if (!ntagRead4pages(PAGE_CHIP_NUM))	{
 		RfidEnd();
+		logError(F("Failed to read RFID chip: chip num"));
+		g_notifier.notifyError();
 		sendError(RFID_READ_ERROR, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
 
 	// неправильный тип чипа
-	/*if (ntag_page[2] != NTAG_MARK)
-	{
+	/*if (ntag_page[2] != NTAG_MARK) {
 		RfidEnd();
 		logError(F("Incorrect chip"));
 		sendError(WRONG_CHIP_TYPE, REPLY_UPDATE_TEAM_MASK);
@@ -1419,10 +1400,10 @@ void updateTeamMask()
 	}*/
 
 	// чип от другой прошивки
-	if (ntag_page[3] != FW_VERSION)
-	{
+	if (ntag_page[3] != FW_VERSION)	{
 		RfidEnd();
 		logError(F("Incorrect chip firmware"));
+		g_notifier.notifyError();
 		sendError(WRONG_FW_VERSION, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1435,10 +1416,10 @@ void updateTeamMask()
 	timeInit += ntag_page[6];
 	timeInit = timeInit << 8;
 	timeInit += ntag_page[7];
-	if ((systemTime.unixtime - timeInit) > maxTimeInit)
-	{
+	if ((systemTime.unixtime - timeInit) > maxTimeInit)	{
 		RfidEnd();
 		logError(F("Outdated chip"));
+		g_notifier.notifyError();
 		sendError(LOW_INIT_TIME, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1446,11 +1427,11 @@ void updateTeamMask()
 	uint16_t chipNum = (ntag_page[0] << 8) + ntag_page[1];
 
 	// Если номер чипа =0 или >maxTeamNumber
-	if (chipNum < 1 || chipNum > maxTeamNumber)
-	{
+	if (chipNum < 1 || chipNum > maxTeamNumber)	{
 		RfidEnd();
 		logError(F("Incorrect chip number"));
 		logDebug(F("Chip number"), chipNum);
+		g_notifier.notifyError();
 		sendError(WRONG_TEAM, REPLY_UPDATE_TEAM_MASK);
 		return;
 	}
@@ -1459,31 +1440,20 @@ void updateTeamMask()
 	// 0-1: номер команды
 	// 2-5: время выдачи чипа
 	// 6-7: маска участников
-	if (newTeamMask[0] + newTeamMask[1] != 0
-		&& ntag_page[0] == newTeamMask[0]
-		&& ntag_page[1] == newTeamMask[1]
-		&& ntag_page[4] == newTeamMask[2]
-		&& ntag_page[5] == newTeamMask[3]
-		&& ntag_page[6] == newTeamMask[4]
-		&& ntag_page[7] == newTeamMask[5])
-	{
-		if (ntag_page[8] != newTeamMask[6] || ntag_page[9] != newTeamMask[7])
-		{
+	if ((newTeamMask[0] | newTeamMask[1]) && std::memcmp(ntag_page, newTeamMask, 6) == 0) {
+		if (std::memcmp(&ntag_page[8], &newTeamMask[6], 2) != 0) {
 			logDebug(F("Updating mask"));
-			digitalWrite(GREEN_LED_PIN, HIGH);
 			uint8_t dataBlock[4] = { newTeamMask[6], newTeamMask[7], ntag_page[10], ntag_page[11] };
-			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false))
-			{
+			if (!ntagWritePage(dataBlock, PAGE_TEAM_MASK, true, false)) {
 				RfidEnd();
-				digitalWrite(GREEN_LED_PIN, LOW);
+				logError(F("Failed to write RFID chip: update mask"));
+				g_notifier.notifyError();
 				sendError(RFID_WRITE_ERROR, REPLY_UPDATE_TEAM_MASK);
-
 				return;
 			}
 		}
 
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
 		clearNewMask();
 	}
 
@@ -1491,14 +1461,14 @@ void updateTeamMask()
 }
 
 // пишем присланные с ББ 4 байта в указанную страницу
-void writeCardPage()
-{
-	digitalWrite(GREEN_LED_PIN, HIGH);
+void writeCardPage() {
+	logDebug(F("Write card page command"));
+
 	// Look for new cards
-	if (!RfidStart())
-	{
+	if (!RfidStart()) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("RFID chip not found"));
+		g_notifier.notifyError();
 		sendError(NO_CHIP, REPLY_WRITE_CARD_PAGE);
 		return;
 	}
@@ -1508,53 +1478,49 @@ void writeCardPage()
 	// 9-12: данные для записи (4 байта)
 
 	// проверить UID
-	if (!ntagRead4pages(PAGE_UID1))
-	{
+	if (!ntagRead4pages(PAGE_UID1))	{
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Failed to read RFID chip UID"));
+		g_notifier.notifyError();
 		sendError(RFID_READ_ERROR, REPLY_WRITE_CARD_PAGE);
-
 		return;
 	}
 	bool flag = false;
-	for (uint8_t i = 0; i <= 7; ++i)
-	{
-		if (uartBuffer[DATA_START_BYTE + i] != 0xff && ntag_page[i] != uartBuffer[DATA_START_BYTE + i])
-		{
+	for (uint8_t i = 0; i <= 7; ++i) {
+		if (uartBuffer[DATA_START_BYTE + i] != 0xff && ntag_page[i] != uartBuffer[DATA_START_BYTE + i])	{
 			flag = true;
 			break;
 		}
 	}
-	if (flag)
-	{
+	if (flag) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logError(F("Incorrect chip UID"));
+		g_notifier.notifyError();
 		sendError(WRONG_UID, REPLY_WRITE_CARD_PAGE);
 		return;
 	}
 
 	// записать страницу
-	uint8_t dataBlock[] =
-	{
+	uint8_t dataBlock[] = {
 		uartBuffer[DATA_START_BYTE + 9],
 		uartBuffer[DATA_START_BYTE + 10],
 		uartBuffer[DATA_START_BYTE + 11],
 		uartBuffer[DATA_START_BYTE + 12]
 	};
 
-	if (!ntagWritePage(dataBlock, uartBuffer[DATA_START_BYTE + 8], true, false))
-	{
+	if (!ntagWritePage(dataBlock, uartBuffer[DATA_START_BYTE + 8], true, false)) {
 		RfidEnd();
-		digitalWrite(GREEN_LED_PIN, LOW);
+		logDebug(F("Failed to write RFID chip"));
+		g_notifier.notifyError();
 		sendError(RFID_WRITE_ERROR, REPLY_WRITE_CARD_PAGE);
-
 		return;
 	}
 
 	RfidEnd();
-	digitalWrite(GREEN_LED_PIN, LOW);
-	init_package(REPLY_WRITE_CARD_PAGE);
+	logDebug(F("Wrote page to chip"));
+	g_notifier.notify();
 
+	init_package(REPLY_WRITE_CARD_PAGE);
 	// 0: код ошибки
 	if (!addData(OK))
 		return;
