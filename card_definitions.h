@@ -18,9 +18,12 @@
 
 #define NTAG213_ID       0x12
 #define NTAG213_MAX_PAGE 40
+#define NTAG213_MARK     213
 
 #define NTAG215_ID       0x3e
 #define NTAG215_MAX_PAGE 130
+#define NTAG215_MARK     215
 
 #define NTAG216_ID       0x6d
 #define NTAG216_MAX_PAGE 226
+#define NTAG216_MARK     216
