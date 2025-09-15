@@ -1,19 +1,26 @@
 #pragma once
 
-#include <Arduino.h>
 
-constexpr bool DEBUG_ENABLED =
-#ifdef DEBUG
-    true;
+#ifndef DEBUG
+    #define logDebug(...) (void)0
+    #define logError(...) (void)0
+    #define logDebugHex(...) (void)0
+    #define logDebugHexArray(...) (void)0
+    #define logDebugDateTime(...) (void)0
 #else
-    false;
-#endif
+    #include <Arduino.h>
+    constexpr bool DEBUG_ENABLED = true;
+    #define DEBUG_PREFIX() logDebugPrefix(__FILE__, __LINE__)
+    #define logDebug(...) do {DEBUG_PREFIX(); _logDebug(__VA_ARGS__);} while(0)
+    #define logError(...) do {DEBUG_PREFIX(); _logError(__VA_ARGS__);} while(0)
+    #define logDebugHex(...) do {DEBUG_PREFIX(); _logDebugHex(__VA_ARGS__);} while(0)
+    #define logDebugHexArray(...) do {DEBUG_PREFIX(); _logDebugHexArray(__VA_ARGS__);} while(0)
+    #define logDebugDateTime(...) do {DEBUG_PREFIX(); _logDebugDateTime(__VA_ARGS__);} while(0)
 
 namespace {
 
     inline void logDebugPrefix(const char* file, int line) {
-        Serial.print(file);
-        Serial.print(F(":"));
+        Serial.print(F("line:"));
         Serial.print(line);
         Serial.print(F(" "));
     }
@@ -25,12 +32,9 @@ namespace {
 
 }
 
-#define DEBUG_PREFIX() logDebugPrefix(__FILE__, __LINE__)
-
 template<typename First, typename... Rest>
-inline void logDebug(First&& first, Rest&&... rest) {
+inline void _logDebug(First&& first, Rest&&... rest) {
     if constexpr (DEBUG_ENABLED) {
-        DEBUG_PREFIX();
         Serial.print(std::forward<First>(first));
         ((Serial.print(' '), Serial.print(std::forward<Rest>(rest))), ...);
         Serial.println();
@@ -38,18 +42,17 @@ inline void logDebug(First&& first, Rest&&... rest) {
 }
 
 template<typename... Args>
-inline void logError(Args&&... args) {
+inline void _logError(Args&&... args) {
     if constexpr (DEBUG_ENABLED) {
-        logDebug(F("ERROR:"), std::forward<Args>(args)...);
+        _logDebug(F("ERROR:"), std::forward<Args>(args)...);
     }
 }
 
 template<typename T>
-inline void logDebugHex(const __FlashStringHelper* label, T value) {
+inline void _logDebugHex(const __FlashStringHelper* label, T value) {
     static_assert(std::is_integral_v<T>, "logDebugHex requires an integral type");
 
     if constexpr (DEBUG_ENABLED) {
-        DEBUG_PREFIX();
         Serial.print(label);
         Serial.print(F("=0x"));
 
@@ -64,9 +67,8 @@ inline void logDebugHex(const __FlashStringHelper* label, T value) {
     }
 }
 
-inline void logDebugHexArray(const __FlashStringHelper* label, const uint8_t* data, size_t length) {
+inline void _logDebugHexArray(const __FlashStringHelper* label, const uint8_t* data, size_t length) {
     if constexpr (DEBUG_ENABLED) {
-        DEBUG_PREFIX();
         Serial.print(label);
 
         for (size_t i = 0; i < length; i++) {
@@ -78,9 +80,8 @@ inline void logDebugHexArray(const __FlashStringHelper* label, const uint8_t* da
     }
 }
 
-inline void logDebugDateTime(const uint8_t* buf) {
+inline void _logDebugDateTime(const uint8_t* buf) {
     if constexpr (DEBUG_ENABLED) {
-        DEBUG_PREFIX();
         Serial.print(F("Time: "));
         Serial.print(buf[0] + 2000); // год
         Serial.print(F("-"));
@@ -101,3 +102,5 @@ inline void logDebugDateTime(const uint8_t* buf) {
         Serial.println();
     }
 }
+
+#endif
