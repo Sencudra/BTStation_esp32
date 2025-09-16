@@ -523,7 +523,7 @@ void processRfidCard()
   */
 
   // чип от другой прошивки Несовместимость со старыми старнциями!!! Отключено!
-/*  if (ntag_page[7] != FW_VERSION)
+  if (ntag_page[7] != FW_VERSION)
   {
     RfidEnd();
 #ifdef DEBUG
@@ -532,7 +532,7 @@ void processRfidCard()
     errorBeep(4);
     addLastError(PROCESS_FW_VERSION);
     return;
-  }   */
+  }   
 
 #ifdef DEBUG
   Serial.println(F("!!!chip fw version correct"));
@@ -1633,7 +1633,7 @@ void updateTeamMask()
     }
 
     // чип от другой прошивки
-  /*if (ntag_page[3] != FW_VERSION)
+  if (ntag_page[3] != FW_VERSION)
   {
     RfidEnd();
 #ifdef DEBUG
@@ -1641,7 +1641,7 @@ void updateTeamMask()
 #endif
     sendError(WRONG_FW_VERSION, REPLY_UPDATE_TEAM_MASK);
     return;
-  }*/
+  }
 
   // Не слишком ли старый чип? Недельной давности и более
   uint32_t timeInit = ntag_page[4];
@@ -1849,7 +1849,6 @@ void readFlash()
   Serial.print(F("!!!startAddress= "));
   Serial.println(String(startAddress));
   Serial.println(teamFile);
-  listDir("/", 1);
   FFat.exists(teamFile.c_str()) ? Serial.println(F("!!!file exists")) : Serial.println(F("!!!file not exists"));
 #endif
 
@@ -1869,7 +1868,6 @@ void readFlash()
       sendError(FLASH_READ_ERROR, REPLY_READ_FLASH);
       return;
     }
-
     yield();
   }
 
