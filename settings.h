@@ -38,7 +38,7 @@ const int MAX_DUTY_CYCLE = (int)(pow(2, PWM_RESOLUTION) - 1);
 #define RTC_ALARM_DELAY			10000 // задержка между проверкой хода часов
 
 // тайм-аут приема команды с момента начала
-#define RECEIVE_TIMEOUT			1000 
+#define RECEIVE_TIMEOUT			1000
 
 // периодичность поиска чипа
 #define RFID_READ_PERIOD		1000
